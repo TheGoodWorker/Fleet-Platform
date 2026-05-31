@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, RefreshTokenDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
@@ -15,6 +16,9 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  // H-11 : Throttle strict sur le login — 5 tentatives / 60 s (profil 'auth').
+  // Le profil 'global' (100/min) est désactivé ici pour n'appliquer que 'auth'.
+  @Throttle({ global: { ttl: 60000, limit: 1000 }, auth: { ttl: 60000, limit: 5 } })
   @ApiOperation({ summary: 'Connexion email/téléphone + mot de passe' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Identifiants invalides' })

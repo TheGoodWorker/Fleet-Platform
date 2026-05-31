@@ -35,9 +35,16 @@ export class UsersService {
       ];
     }
 
-    // Manager ne voit que les chauffeurs qu'il gère (via ses véhicules)
+    // H-05 : MANAGER ne voit que les chauffeurs liés à ses contrats.
+    // La requête précédente filtre uniquement role=DRIVER sans restriction manager,
+    // exposant les chauffeurs d'autres managers — corrigé ici.
     if (requestingUser.role === UserRole.MANAGER) {
       where.role = UserRole.DRIVER;
+      where.driver = {
+        contracts: {
+          some: { managerId: requestingUser.id },
+        },
+      };
     }
 
     const [data, total] = await Promise.all([
@@ -63,7 +70,7 @@ export class UsersService {
   async create(dto: CreateUserDto, creatorRole: UserRole) {
     // Seul Admin peut créer un Admin ou Super Manager
     if (
-      [UserRole.ADMIN, UserRole.SUPER_MANAGER].includes(dto.role) &&
+      ([UserRole.ADMIN, UserRole.SUPER_MANAGER] as UserRole[]).includes(dto.role) &&
       creatorRole !== UserRole.ADMIN
     ) {
       throw new ForbiddenException('Seul un Admin peut créer un compte Admin ou Super Manager');

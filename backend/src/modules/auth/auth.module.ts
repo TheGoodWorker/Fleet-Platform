@@ -13,10 +13,18 @@ import { RolesGuard } from '../../common/guards/roles.guard';
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('jwt.accessSecret', 'fallback'),
-        signOptions: { expiresIn: configService.get<string>('jwt.accessExpiresIn', '1d') },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('jwt.accessSecret');
+        if (!secret) {
+          throw new Error(
+            '[AuthModule] JWT_ACCESS_SECRET est absent — démarrage impossible.',
+          );
+        }
+        return {
+          secret,
+          signOptions: { expiresIn: configService.get<string>('jwt.accessExpiresIn', '1d') },
+        };
+      },
       inject: [ConfigService],
     }),
   ],

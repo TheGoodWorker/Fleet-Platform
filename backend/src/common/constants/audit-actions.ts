@@ -107,6 +107,9 @@ export const AuditActions = {
   // VehicleDriverAssignment (Phase 3-E)
   VEHICLE_DRIVER_ASSIGNED: 'VEHICLE_DRIVER_ASSIGNED',
   VEHICLE_DRIVER_UNASSIGNED: 'VEHICLE_DRIVER_UNASSIGNED',
+
+  // Paiements — Phase 4-A
+  PAYMENT_ROLLED_BACK: 'PAYMENT_ROLLED_BACK',
 } as const;
 
 /** @deprecated Utilisez AuditActions */

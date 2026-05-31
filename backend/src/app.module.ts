@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { appConfig, validateConfig } from './config/app.config';
@@ -39,6 +40,10 @@ import { ContraventionsModule } from './modules/contraventions/contraventions.mo
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 
 @Module({
+  providers: [
+    // ThrottlerGuard global — appliqué à toute l'application (H-11)
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
   imports: [
     // Config globale
     ConfigModule.forRoot({
@@ -48,13 +53,21 @@ import { RepossessionsModule } from './modules/repossessions/repossessions.modul
       envFilePath: ['.env', '.env.local'],
     }),
 
-    // Rate limiting
+    // Rate limiting — deux profils :
+    //   global : 100 req / 60 s (tous les endpoints)
+    //   auth   : 5 req / 60 s  (POST /auth/login uniquement, via @Throttle sur le handler)
     ThrottlerModule.forRootAsync({
       useFactory: () => ({
         throttlers: [
           {
-            ttl: parseInt(process.env.THROTTLE_TTL ?? '60000'),
-            limit: parseInt(process.env.THROTTLE_LIMIT ?? '100'),
+            name: 'global',
+            ttl: parseInt(process.env.THROTTLE_TTL ?? '60000', 10),
+            limit: parseInt(process.env.THROTTLE_LIMIT ?? '100', 10),
+          },
+          {
+            name: 'auth',
+            ttl: parseInt(process.env.AUTH_THROTTLE_TTL ?? '60000', 10),
+            limit: parseInt(process.env.AUTH_THROTTLE_LIMIT ?? '5', 10),
           },
         ],
       }),

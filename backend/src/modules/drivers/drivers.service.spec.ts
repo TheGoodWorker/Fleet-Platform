@@ -53,6 +53,16 @@ const mockPrisma = {
   user: {
     update: jest.fn(),
   },
+  // C-04 : $transaction délègue aux mocks racine pour conserver
+  // la compatibilité avec les assertions existantes.
+  $transaction: jest.fn(async (fn: (tx: any) => Promise<any>) =>
+    fn({
+      driverKYC: mockPrisma.driverKYC,
+      driverFieldValidation: mockPrisma.driverFieldValidation,
+      driver: mockPrisma.driver,
+      contract: mockPrisma.contract,
+    }),
+  ),
 };
 
 const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -190,6 +200,23 @@ describe('DriversService', () => {
 
       await expect(service.validateKyc('unknown-id', ACTOR_ID)).rejects.toThrow(NotFoundException);
     });
+
+    // C-04 — vérification de l'atomicité transactionnelle
+    it('exécute les 3 mutations dans une seule $transaction (C-04)', async () => {
+      mockPrisma.driver.findFirst.mockResolvedValue(buildDriver());
+      mockPrisma.driverKYC.update.mockResolvedValue({});
+      mockPrisma.driver.update.mockResolvedValue({});
+      mockPrisma.contract.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.validateKyc(DRIVER_ID, ACTOR_ID);
+
+      // La transaction doit avoir été démarrée exactement une fois
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      // Les 3 writes doivent avoir eu lieu (inside the tx)
+      expect(mockPrisma.driverKYC.update).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.driver.update).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.contract.updateMany).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ─── validateField() ──────────────────────────────────────────────────────
@@ -318,6 +345,23 @@ describe('DriversService', () => {
       mockPrisma.driver.findFirst.mockResolvedValue(null);
 
       await expect(service.validateField('unknown-id', ACTOR_ID, fieldDto)).rejects.toThrow(NotFoundException);
+    });
+
+    // C-04 — vérification de l'atomicité transactionnelle
+    it('exécute les 3 mutations dans une seule $transaction (C-04)', async () => {
+      mockPrisma.driver.findFirst.mockResolvedValue(
+        buildDriver({ status: DriverStatus.PENDING_FIELD_VALIDATION, fieldValidation: null }),
+      );
+      mockPrisma.driverFieldValidation.create.mockResolvedValue({});
+      mockPrisma.driver.update.mockResolvedValue({});
+      mockPrisma.contract.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.validateField(DRIVER_ID, ACTOR_ID, fieldDto);
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.driverFieldValidation.create).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.driver.update).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.contract.updateMany).toHaveBeenCalledTimes(1);
     });
 
     it('applique homeVisitDone=true par défaut si non fourni', async () => {

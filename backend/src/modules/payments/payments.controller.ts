@@ -3,9 +3,10 @@ import {
   ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { UserRole, User } from '@prisma/client';
+import { User } from '@prisma/client';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto, RejectPaymentDto, PaymentFiltersDto } from './dto/payment.dto';
+import { UserRole } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -19,15 +20,16 @@ export class PaymentsController {
 
   @Get()
   @Roles(UserRole.MANAGER)
-  @ApiOperation({ summary: 'Lister les paiements (filtres optionnels)' })
+  @ApiOperation({ summary: 'Lister les paiements (filtres optionnels — scopé par rôle)' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   findAll(
     @Query() filters: PaymentFiltersDto,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.findAll(filters, page, limit);
+    return this.service.findAll(filters, page, limit, user);
   }
 
   @Get(':id')

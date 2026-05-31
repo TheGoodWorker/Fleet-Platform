@@ -117,48 +117,53 @@ export class DriversService {
 
     const now = new Date();
 
-    // 1. Marquer tous les champs KYC validés
-    if (driver.kyc) {
-      await this.prisma.driverKYC.update({
-        where: { driverId },
-        data: {
-          fullNameVerified: true,
-          photoVerified: true,
-          idCardVerified: true,
-          licenseVerified: true,
-          phoneVerified: true,
-          validatedById: actorId,
-          validatedAt: now,
-        },
-      });
-    } else {
-      await this.prisma.driverKYC.create({
-        data: {
-          driverId,
-          fullNameVerified: true,
-          photoVerified: true,
-          idCardVerified: true,
-          licenseVerified: true,
-          phoneVerified: true,
-          validatedById: actorId,
-          validatedAt: now,
-        },
-      });
-    }
+    // C-04 : les 3 opérations de mutation sont atomiques dans une transaction.
+    // Sans transaction, un échec partiel (ex. réseau sur contract.updateMany)
+    // laisserait le KYC validé sans que la checklist contrat soit mise à jour.
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Marquer tous les champs KYC validés
+      if (driver.kyc) {
+        await tx.driverKYC.update({
+          where: { driverId },
+          data: {
+            fullNameVerified: true,
+            photoVerified: true,
+            idCardVerified: true,
+            licenseVerified: true,
+            phoneVerified: true,
+            validatedById: actorId,
+            validatedAt: now,
+          },
+        });
+      } else {
+        await tx.driverKYC.create({
+          data: {
+            driverId,
+            fullNameVerified: true,
+            photoVerified: true,
+            idCardVerified: true,
+            licenseVerified: true,
+            phoneVerified: true,
+            validatedById: actorId,
+            validatedAt: now,
+          },
+        });
+      }
 
-    // 2. Mettre à jour le statut du chauffeur
-    await this.prisma.driver.update({
-      where: { id: driverId },
-      data: { status: DriverStatus.PENDING_FIELD_VALIDATION },
+      // 2. Mettre à jour le statut du chauffeur
+      await tx.driver.update({
+        where: { id: driverId },
+        data: { status: DriverStatus.PENDING_FIELD_VALIDATION },
+      });
+
+      // 3. Propager kycValidated = true sur tous les contrats en cours de montage
+      await tx.contract.updateMany({
+        where: { driverId, status: { in: CHECKLIST_CONTRACT_STATUSES } },
+        data: { kycValidated: true },
+      });
     });
 
-    // 3. Propager kycValidated = true sur tous les contrats en cours de montage
-    await this.prisma.contract.updateMany({
-      where: { driverId, status: { in: CHECKLIST_CONTRACT_STATUSES } },
-      data: { kycValidated: true },
-    });
-
-    // 4. Audit (fire-and-forget)
+    // 4. Audit (fire-and-forget — hors transaction, ne bloque pas l'opération)
     this.audit
       .log({
         actorId,
@@ -215,31 +220,34 @@ export class DriversService {
       reviewedAt: now,
     };
 
-    // 1. Upsert DriverFieldValidation
-    if (driver.fieldValidation) {
-      await this.prisma.driverFieldValidation.update({
-        where: { driverId },
-        data: fieldData,
-      });
-    } else {
-      await this.prisma.driverFieldValidation.create({
-        data: { driverId, ...fieldData },
-      });
-    }
+    // C-04 : les 3 opérations de mutation sont atomiques dans une transaction.
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Upsert DriverFieldValidation
+      if (driver.fieldValidation) {
+        await tx.driverFieldValidation.update({
+          where: { driverId },
+          data: fieldData,
+        });
+      } else {
+        await tx.driverFieldValidation.create({
+          data: { driverId, ...fieldData },
+        });
+      }
 
-    // 2. Mettre à jour le statut du chauffeur
-    await this.prisma.driver.update({
-      where: { id: driverId },
-      data: { status: DriverStatus.APPROVED },
+      // 2. Mettre à jour le statut du chauffeur
+      await tx.driver.update({
+        where: { id: driverId },
+        data: { status: DriverStatus.APPROVED },
+      });
+
+      // 3. Propager fieldValidated = true sur tous les contrats en cours de montage
+      await tx.contract.updateMany({
+        where: { driverId, status: { in: CHECKLIST_CONTRACT_STATUSES } },
+        data: { fieldValidated: true },
+      });
     });
 
-    // 3. Propager fieldValidated = true sur tous les contrats en cours de montage
-    await this.prisma.contract.updateMany({
-      where: { driverId, status: { in: CHECKLIST_CONTRACT_STATUSES } },
-      data: { fieldValidated: true },
-    });
-
-    // 4. Audit (fire-and-forget)
+    // 4. Audit (fire-and-forget — hors transaction)
     this.audit
       .log({
         actorId,

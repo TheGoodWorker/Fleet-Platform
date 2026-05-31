@@ -257,10 +257,27 @@ export class MediaService {
       throw new BadRequestException(`Mission ${mission.status} — impossible à soumettre`);
     }
 
-    await this.prisma.photo.updateMany({
-      where: { id: { in: dto.photoIds } },
-      data: { missionId: id },
-    });
+    // H-10 : vérifier que toutes les photos appartiennent à l'acteur avant de les lier.
+    // Un chauffeur ne doit pas pouvoir associer des photos d'un autre utilisateur.
+    if (dto.photoIds && dto.photoIds.length > 0) {
+      const unauthorized = await this.prisma.photo.findFirst({
+        where: {
+          id: { in: dto.photoIds },
+          mediaAsset: { uploadedById: { not: actor.id } },
+        },
+        select: { id: true },
+      });
+      if (unauthorized) {
+        throw new ForbiddenException(
+          'Une ou plusieurs photos soumises ne vous appartiennent pas (H-10).',
+        );
+      }
+
+      await this.prisma.photo.updateMany({
+        where: { id: { in: dto.photoIds } },
+        data: { missionId: id },
+      });
+    }
 
     return this.prisma.photoMission.update({
       where: { id },

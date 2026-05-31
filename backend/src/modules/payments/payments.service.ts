@@ -5,7 +5,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ContractStatus, LedgerEntryType, LedgerDirection, PaymentStatus, User } from '@prisma/client';
+import {
+  ContractStatus, DayStatus, LedgerEntryType, LedgerDirection,
+  PaymentStatus, User, UserRole, VehicleStatus,
+} from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { CreatePaymentDto, RejectPaymentDto, PaymentFiltersDto } from './dto/payment.dto';
 import { DailyEntriesService } from '../daily-entries/daily-entries.service';
@@ -37,7 +40,7 @@ export class PaymentsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: PaymentFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: PaymentFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
 
@@ -48,6 +51,12 @@ export class PaymentsService {
       where.paidAt = {};
       if (filters.from) where.paidAt.gte = new Date(filters.from);
       if (filters.to) where.paidAt.lte = new Date(filters.to);
+    }
+
+    // H-03 : MANAGER ne voit que les paiements de ses contrats.
+    // SUPER_MANAGER et ADMIN accèdent à tous les paiements.
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.contract = { managerId: requestingUser.id };
     }
 
     const [data, total] = await Promise.all([
@@ -183,23 +192,34 @@ export class PaymentsService {
     });
 
     // 6. Notifications chauffeur
-    const notifType = result.allocation.validatedCount > 0 ? 'PAYMENT_RECEIVED' : 'PAYMENT_INCOMPLETE';
-    const notifMsg =
-      result.allocation.validatedCount > 0
-        ? `${result.allocation.validatedCount} jour(s) validé(s) — ${dto.amount} FCFA`
-        : `Paiement partiel de ${dto.amount} FCFA enregistré`;
+    // C-02 : dto.driverId est un Driver.id (entity PK), pas un User.id.
+    // NotificationsService.send() attend un User.id → résolution obligatoire.
+    const driverForNotif = await this.prisma.driver.findFirst({
+      where: { id: dto.driverId },
+      select: { userId: true },
+    });
 
-    await this.notificationsService
-      .send({
-        userId: dto.driverId,
-        type: notifType as any,
-        title: result.allocation.validatedCount > 0 ? 'Paiement enregistré' : 'Paiement partiel reçu',
-        message: notifMsg,
-        priority: (result.allocation.validatedCount > 0 ? 'NORMAL' : 'LOW') as any,
-        entityType: EntityTypes.PAYMENT,
-        entityId: result.payment.id,
-      })
-      .catch(() => {});
+    if (driverForNotif?.userId) {
+      const notifType = result.allocation.validatedCount > 0 ? 'PAYMENT_RECEIVED' : 'PAYMENT_INCOMPLETE';
+      const notifMsg =
+        result.allocation.validatedCount > 0
+          ? `${result.allocation.validatedCount} jour(s) validé(s) — ${dto.amount} FCFA`
+          : `Paiement partiel de ${dto.amount} FCFA enregistré`;
+
+      await this.notificationsService
+        .send({
+          userId: driverForNotif.userId,
+          type: notifType as any,
+          title: result.allocation.validatedCount > 0 ? 'Paiement enregistré' : 'Paiement partiel reçu',
+          message: notifMsg,
+          priority: (result.allocation.validatedCount > 0 ? 'NORMAL' : 'LOW') as any,
+          entityType: EntityTypes.PAYMENT,
+          entityId: result.payment.id,
+        })
+        .catch(() => {});
+    } else {
+      this.logger.warn(`C-02: Driver ${dto.driverId} sans userId — notification ignorée`);
+    }
 
     return this.findById(result.payment.id);
   }
@@ -207,31 +227,118 @@ export class PaymentsService {
   // ─── Rejet paiement ────────────────────────────────────────────────────────
 
   /**
-   * Rejette un paiement (Super Manager / Admin).
-   * Note : les DailyEntry ne sont pas réversées automatiquement.
-   * Toute correction nécessite un audit manuel.
+   * Rejette un paiement et inverse l'impact sur les DailyEntry liées (C-01).
+   *
+   * Rollback atomique (transaction) :
+   *   1. Payment.status → REJECTED
+   *   2. DailyEntry concernées → UNPAID (paidAmount = 0, paymentId = null)
+   *   3. Contract.validatedDays decremented du nombre de jours validés annulés
+   *   4. Si le contrat était COMPLETED et repasse < targetDays → restore ACTIVE
+   *      + vehicle.status → ASSIGNED (currentContractId / currentDriverId restaurés)
    */
   async rejectPayment(id: string, dto: RejectPaymentDto, actor: User) {
-    const payment = await this.findById(id);
+    // Charger le paiement avec les entrées et le contrat nécessaires au rollback
+    const payment = await this.prisma.payment.findFirst({
+      where: { id },
+      include: {
+        dailyEntries: { select: { id: true, status: true } },
+        contract: {
+          select: {
+            id: true, type: true, status: true,
+            validatedDays: true, targetDays: true,
+            vehicleId: true, driverId: true,
+          },
+        },
+        vehicle: { select: { id: true, plateNumber: true, brand: true, model: true } },
+        driver: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
+        createdBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+      },
+    });
+    if (!payment) throw new NotFoundException(`Paiement ${id} introuvable`);
 
     if (payment.status === PaymentStatus.REJECTED) {
       throw new BadRequestException('Ce paiement est déjà rejeté');
     }
 
-    const updated = await this.prisma.payment.update({
-      where: { id },
-      data: { status: PaymentStatus.REJECTED, notes: dto.reason },
-      include: PAYMENT_INCLUDE,
+    const contract = payment.contract;
+    if (!contract) throw new BadRequestException('Contrat manquant sur ce paiement — rollback impossible');
+
+    // Identifier les entrées à inverser
+    const entriesToRevert = (payment.dailyEntries ?? []).filter(
+      (e) => e.status === DayStatus.VALIDATED || e.status === DayStatus.PARTIALLY_PAID,
+    );
+    const validatedEntryCount = entriesToRevert.filter((e) => e.status === DayStatus.VALIDATED).length;
+    const entryIdsToRevert = entriesToRevert.map((e) => e.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Rejeter le paiement
+      await tx.payment.update({
+        where: { id },
+        data: { status: PaymentStatus.REJECTED, notes: dto.reason },
+      });
+
+      // 2. Inverser les DailyEntry — toutes repassent UNPAID, paidAmount remis à zéro
+      if (entryIdsToRevert.length > 0) {
+        await tx.dailyEntry.updateMany({
+          where: { id: { in: entryIdsToRevert } },
+          data: {
+            status: DayStatus.UNPAID,
+            paidAmount: null,
+            paymentId: null,
+            validatedAt: null,
+          },
+        });
+      }
+
+      // 3. Décrémenter contract.validatedDays du nombre de jours validés annulés
+      if (validatedEntryCount > 0) {
+        await tx.contract.update({
+          where: { id: contract.id },
+          data: { validatedDays: { decrement: validatedEntryCount } },
+        });
+      }
+
+      // 4. Si le contrat était COMPLETED et repasse en dessous de targetDays
+      //    après décrémentation → restaurer ACTIVE + véhicule ASSIGNED
+      const newValidatedDays = (contract.validatedDays ?? 0) - validatedEntryCount;
+      const targetDays = contract.targetDays ?? 0;
+
+      if (
+        contract.status === ContractStatus.COMPLETED &&
+        validatedEntryCount > 0 &&
+        newValidatedDays < targetDays
+      ) {
+        await tx.contract.update({
+          where: { id: contract.id },
+          data: { status: ContractStatus.ACTIVE, closedAt: null },
+        });
+        if (contract.vehicleId) {
+          await tx.vehicle.update({
+            where: { id: contract.vehicleId },
+            data: {
+              status: VehicleStatus.ASSIGNED,
+              currentContractId: contract.id,
+              currentDriverId: contract.driverId ?? null,
+            },
+          });
+        }
+      }
     });
 
     await this.auditService.log({
-      action: AuditActions.PAYMENT_REJECTED,
+      action: AuditActions.PAYMENT_ROLLED_BACK,
       actorId: actor.id,
       entityType: EntityTypes.PAYMENT,
       entityId: id,
-      metadata: { reason: dto.reason, amount: payment.amount },
+      afterJson: {
+        reason: dto.reason,
+        amount: payment.amount?.toString(),
+        entriesReverted: entryIdsToRevert.length,
+        validatedDaysDecremented: validatedEntryCount,
+        contractWasCompleted: contract.status === ContractStatus.COMPLETED,
+      },
     });
 
-    return updated;
+    return this.findById(id);
   }
 }
