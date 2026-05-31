@@ -1,5 +1,5 @@
 import { registerAs } from '@nestjs/config';
-import { IsEnum, IsNumber, IsString, Min, validateSync } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, Min, validateSync } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
 export enum Environment {
@@ -28,6 +28,14 @@ class EnvironmentVariables {
 
   @IsString()
   JWT_REFRESH_SECRET: string;
+
+  /** Liste d'origines CORS autorisées, séparées par des virgules.
+   *  Ex: https://app.fleet.com,https://admin.fleet.com
+   *  En développement, cette variable est ignorée (toutes les origines acceptées).
+   */
+  @IsOptional()
+  @IsString()
+  ALLOWED_ORIGINS?: string;
 }
 
 export function validateConfig(config: Record<string, unknown>) {

@@ -4,12 +4,14 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { LoginDto, RefreshTokenDto } from './dto/login.dto';
+import { LoginDto, RefreshTokenDto, LogoutDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
@@ -50,6 +52,16 @@ export class AuthService {
       throw new UnauthorizedException('Token de type invalide');
     }
 
+    // H-01 : vérifier que le token n'a pas été révoqué (logout).
+    if (payload.jti) {
+      const revoked = await this.prisma.revokedToken.findFirst({
+        where: { jti: payload.jti },
+      });
+      if (revoked) {
+        throw new UnauthorizedException('Refresh token révoqué — reconnectez-vous');
+      }
+    }
+
     const user = await this.prisma.user.findFirst({
       where: { id: payload.sub, deletedAt: null },
     });
@@ -59,6 +71,52 @@ export class AuthService {
     }
 
     return this.buildAuthResponse(user);
+  }
+
+  // H-01 — Logout : révoque le refresh token (persiste le jti en DB).
+  async logout(dto: LogoutDto, userId: string): Promise<{ message: string }> {
+    let payload: JwtPayload;
+
+    try {
+      payload = this.jwtService.verify<JwtPayload>(dto.refreshToken, {
+        secret: this.configService.get<string>('jwt.refreshSecret'),
+      });
+    } catch {
+      // Token expiré ou invalide : pas grave, le logout est quand même un succès.
+      return { message: 'Déconnexion effectuée' };
+    }
+
+    if (payload.type !== 'refresh' || payload.sub !== userId) {
+      // Token non lié à cet utilisateur — on refuse silencieusement.
+      return { message: 'Déconnexion effectuée' };
+    }
+
+    if (payload.jti) {
+      const expiresAt = payload.exp
+        ? new Date(payload.exp * 1000)
+        : new Date(Date.now() + 7 * 24 * 3600 * 1000); // fallback 7j
+
+      await this.prisma.revokedToken.upsert({
+        where: { jti: payload.jti },
+        create: { jti: payload.jti, userId, expiresAt },
+        update: {}, // déjà révoqué → no-op
+      });
+
+      this.logger.log(`H-01: Refresh token ${payload.jti} révoqué (user ${userId})`);
+    }
+
+    return { message: 'Déconnexion effectuée' };
+  }
+
+  // H-01 — Nettoyage quotidien des tokens révoqués expirés.
+  @Cron('0 4 * * *', { name: 'cleanup-revoked-tokens' })
+  async cleanupExpiredRevokedTokens(): Promise<void> {
+    const result = await this.prisma.revokedToken.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    if (result.count > 0) {
+      this.logger.log(`H-01 cron: ${result.count} revoked token(s) expirés supprimés`);
+    }
   }
 
   async getProfile(userId: string) {
@@ -126,6 +184,7 @@ export class AuthService {
       sub: user.id,
       role: user.role,
       type: 'refresh',
+      jti: uuidv4(), // H-01 : identifiant unique pour la révocation
     };
 
     const accessExpiresIn = this.configService.get<string>('jwt.accessExpiresIn', '1d');

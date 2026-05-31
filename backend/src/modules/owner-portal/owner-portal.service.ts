@@ -217,7 +217,7 @@ export class OwnerPortalService {
     if (s?.showNotifications && contract.owner?.userId) {
       notifications = await this.prisma.notification.findMany({
         where: { userId: contract.owner.userId },
-        select: { id: true, type: true, title: true, message: true, createdAt: true, isRead: true },
+        select: { id: true, type: true, title: true, message: true, createdAt: true, readAt: true },
         orderBy: { createdAt: 'desc' },
         take: 20,
       });

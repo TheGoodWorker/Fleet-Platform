@@ -30,6 +30,11 @@ const mockPrisma = {
     findFirst: jest.fn(),
     update: jest.fn(),
   },
+  revokedToken: {
+    findFirst: jest.fn(),
+    upsert: jest.fn().mockResolvedValue({}),
+    deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+  },
 };
 
 const mockJwt = {
@@ -126,7 +131,8 @@ describe('AuthService', () => {
 
   describe('refresh()', () => {
     it('retourne de nouveaux tokens avec un refresh token valide', async () => {
-      mockJwt.verify.mockReturnValue({ sub: mockUser.id, role: mockUser.role, type: 'refresh' });
+      mockJwt.verify.mockReturnValue({ sub: mockUser.id, role: mockUser.role, type: 'refresh', jti: 'jti-abc' });
+      mockPrisma.revokedToken.findFirst.mockResolvedValue(null); // non révoqué
       mockPrisma.user.findFirst.mockResolvedValue(mockUser);
 
       const result = await service.refresh({ refreshToken: 'valid-refresh' });
@@ -147,17 +153,70 @@ describe('AuthService', () => {
     });
 
     it('lève UnauthorizedException si l\'utilisateur est SUSPENDED', async () => {
-      mockJwt.verify.mockReturnValue({ sub: mockUser.id, role: mockUser.role, type: 'refresh' });
+      mockJwt.verify.mockReturnValue({ sub: mockUser.id, role: mockUser.role, type: 'refresh', jti: 'jti-abc' });
+      mockPrisma.revokedToken.findFirst.mockResolvedValue(null);
       mockPrisma.user.findFirst.mockResolvedValue({ ...mockUser, status: UserStatus.SUSPENDED });
 
       await expect(service.refresh({ refreshToken: 'valid-refresh' })).rejects.toThrow(UnauthorizedException);
     });
 
     it('lève UnauthorizedException si l\'utilisateur n\'existe plus', async () => {
-      mockJwt.verify.mockReturnValue({ sub: mockUser.id, role: mockUser.role, type: 'refresh' });
+      mockJwt.verify.mockReturnValue({ sub: mockUser.id, role: mockUser.role, type: 'refresh', jti: 'jti-abc' });
+      mockPrisma.revokedToken.findFirst.mockResolvedValue(null);
       mockPrisma.user.findFirst.mockResolvedValue(null);
 
       await expect(service.refresh({ refreshToken: 'valid-refresh' })).rejects.toThrow(UnauthorizedException);
+    });
+
+    // ── H-01 — Révocation ──────────────────────────────────────────────────
+
+    it('H-01: lève UnauthorizedException si le jti est révoqué', async () => {
+      mockJwt.verify.mockReturnValue({ sub: mockUser.id, role: mockUser.role, type: 'refresh', jti: 'jti-revoked' });
+      mockPrisma.revokedToken.findFirst.mockResolvedValue({ id: 'rev-1', jti: 'jti-revoked' });
+
+      await expect(service.refresh({ refreshToken: 'revoked-token' })).rejects.toThrow(UnauthorizedException);
+      expect(mockPrisma.user.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── logout ────────────────────────────────────────────────────────────────
+
+  describe('logout() — H-01', () => {
+    it('révoque le jti et retourne un message de succès', async () => {
+      const jti = 'jti-logout-test';
+      mockJwt.verify.mockReturnValue({
+        sub: mockUser.id, role: mockUser.role, type: 'refresh',
+        jti, exp: Math.floor(Date.now() / 1000) + 604800,
+      });
+      mockPrisma.revokedToken.upsert.mockResolvedValue({});
+
+      const result = await service.logout({ refreshToken: 'valid-refresh' }, mockUser.id);
+
+      expect(result).toEqual({ message: 'Déconnexion effectuée' });
+      expect(mockPrisma.revokedToken.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { jti }, create: expect.objectContaining({ jti, userId: mockUser.id }) }),
+      );
+    });
+
+    it('retourne succès si le refresh token est expiré ou invalide (pas d\'erreur)', async () => {
+      mockJwt.verify.mockImplementation(() => { throw new Error('expired'); });
+
+      const result = await service.logout({ refreshToken: 'expired-token' }, mockUser.id);
+
+      expect(result).toEqual({ message: 'Déconnexion effectuée' });
+      expect(mockPrisma.revokedToken.upsert).not.toHaveBeenCalled();
+    });
+
+    it('retourne succès sans upsert si le token appartient à un autre utilisateur', async () => {
+      mockJwt.verify.mockReturnValue({
+        sub: 'other-user-id', role: mockUser.role, type: 'refresh',
+        jti: 'jti-other', exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      const result = await service.logout({ refreshToken: 'other-token' }, mockUser.id);
+
+      expect(result).toEqual({ message: 'Déconnexion effectuée' });
+      expect(mockPrisma.revokedToken.upsert).not.toHaveBeenCalled();
     });
   });
 });

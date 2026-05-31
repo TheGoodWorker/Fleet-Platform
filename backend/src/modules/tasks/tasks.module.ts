@@ -1,10 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TasksController } from './tasks.controller';
-import { TasksService } from './tasks.service';
 
+/** H-13 : module Tasks stub — 501 Not Implemented. Service non instancié jusqu'à Phase 3+. */
 @Module({
   controllers: [TasksController],
-  providers: [TasksService],
-  exports: [TasksService],
 })
 export class TasksModule {}

@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { LimitCapInterceptor } from './common/interceptors/limit-cap.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -23,10 +24,29 @@ async function bootstrap() {
   // Préfixe global API
   app.setGlobalPrefix(apiPrefix);
 
-  // CORS — affiner en production
+  // H-04 : CORS avec allowlist configurable.
+  // - development : toutes les origines acceptées (Swagger, Flutter dev, Postman).
+  // - production/staging : seules les origines listées dans ALLOWED_ORIGINS sont acceptées.
+  //   Format : ALLOWED_ORIGINS=https://app.fleet.com,https://admin.fleet.com
+  //   Si ALLOWED_ORIGINS est absent en production, CORS est désactivé (blocage total).
+  const rawOrigins = configService.get<string>('ALLOWED_ORIGINS', '');
+  const allowedOrigins = rawOrigins
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  const corsOrigin: boolean | string[] =
+    nodeEnv === 'development'
+      ? true
+      : allowedOrigins.length > 0
+        ? allowedOrigins
+        : false;
+
   app.enableCors({
-    origin: nodeEnv === 'production' ? false : true,
+    origin: corsOrigin,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Validation globale
@@ -42,8 +62,10 @@ async function bootstrap() {
   // Filtre d'exceptions global
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // Intercepteur de réponse standard
+  // Intercepteurs globaux — ordre d'exécution : LimitCap → ClassSerializer → Transform
+  // LimitCap doit être en premier : il s'exécute AVANT les pipes (ParseIntPipe).
   app.useGlobalInterceptors(
+    new LimitCapInterceptor(),
     new ClassSerializerInterceptor(app.get(Reflector)),
     new TransformInterceptor(),
   );

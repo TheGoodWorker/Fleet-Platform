@@ -2134,6 +2134,25 @@ model Notification {
 }
 
 // =============================================================================
+// MODÈLE 49 — REVOKED TOKEN
+// =============================================================================
+// Stocke les JTI des refresh tokens révoqués (logout).
+// Nettoyage automatique via cron quotidien (AuthService).
+// Ne pas stocker les access tokens — leur durée courte (1d) les rend obsolètes.
+
+model RevokedToken {
+  id        String   @id @default(uuid())
+  jti       String   @unique   // JWT ID extrait du refresh token
+  userId    String              // Référence non-contrainte (User peut être supprimé)
+  revokedAt DateTime @default(now())
+  expiresAt DateTime            // = exp du JWT — utilisé pour le nettoyage cron
+
+  @@map("revoked_tokens")
+  @@index([jti])
+  @@index([expiresAt])
+}
+
+// =============================================================================
 // MODÈLE 38 — MONTHLY SETTLEMENT (Relevé mensuel — PARTNER_FLEET)
 // =============================================================================
 

@@ -10,6 +10,10 @@ export interface JwtPayload {
   phone?: string;
   role: string;
   type: 'access' | 'refresh';
+  /** Identifiant unique du token (uuid v4) — présent sur les refresh tokens uniquement. */
+  jti?: string;
+  /** Timestamp d'expiration standard JWT (secondes UNIX) — injecté par jwtService. */
+  exp?: number;
 }
 
 @Injectable()

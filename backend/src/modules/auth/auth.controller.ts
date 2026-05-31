@@ -2,7 +2,7 @@ import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/commo
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshTokenDto } from './dto/login.dto';
+import { LoginDto, RefreshTokenDto, LogoutDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -33,6 +33,15 @@ export class AuthController {
   @ApiResponse({ status: 200, type: AuthResponseDto })
   refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
     return this.authService.refresh(dto);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({ summary: 'Déconnexion — révoque le refresh token (H-01)' })
+  @ApiResponse({ status: 200, description: 'Déconnexion effectuée' })
+  logout(@Body() dto: LogoutDto, @CurrentUser() user: User) {
+    return this.authService.logout(dto, user.id);
   }
 
   @Get('me')

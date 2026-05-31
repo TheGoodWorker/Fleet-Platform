@@ -23,3 +23,9 @@ export class RefreshTokenDto {
   @IsString()
   refreshToken: string;
 }
+
+export class LogoutDto {
+  @ApiProperty({ description: 'Refresh token à révoquer' })
+  @IsString()
+  refreshToken: string;
+}
