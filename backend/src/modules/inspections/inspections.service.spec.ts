@@ -58,7 +58,7 @@ const mockPrisma = {
   },
   vehicle: { findFirst: jest.fn() },
   contract: { findFirst: jest.fn() },
-  charge: { create: jest.fn() },
+  charge: { create: jest.fn(), findFirst: jest.fn() },
 };
 
 const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };

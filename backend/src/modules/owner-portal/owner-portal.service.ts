@@ -92,7 +92,7 @@ export class OwnerPortalService {
         action: AuditActions.OWNER_VISIBILITY_CONFIGURED,
         entityType: EntityTypes.CONTRACT,
         entityId: contractId,
-        afterJson: dto,
+        afterJson: { ...dto },
       })
       .catch(() => {});
 

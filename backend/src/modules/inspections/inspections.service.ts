@@ -360,7 +360,13 @@ export class InspectionsService {
         : null;
 
     // ── Items de checklist ────────────────────────────────────────────────
-    const handoverItemMap = new Map(handover.items.map((i) => [i.itemKey, i]));
+    // Note: la relation auto-référencée (linkedHandoverInspection) atteint la
+    // limite d'inférence de profondeur de Prisma → items typé {}. On réutilise
+    // le type correctement inféré de returnInsp.items (même forme runtime).
+    type InspItem = (typeof returnInsp.items)[number];
+    const handoverItemMap = new Map<string, InspItem>(
+      (handover.items as InspItem[]).map((i) => [i.itemKey, i]),
+    );
     const itemDiffs = returnInsp.items.map((returnItem) => {
       const handoverItem = handoverItemMap.get(returnItem.itemKey);
       return {

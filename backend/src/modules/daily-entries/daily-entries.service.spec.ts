@@ -136,7 +136,7 @@ describe('DailyEntriesService — allocatePaymentToEntries()', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             status: DayStatus.PARTIALLY_PAID,
-            paidAmount: expect.objectContaining({ s: '5000' }),
+            paidAmount: new Decimal(5000),
           }),
         }),
       );

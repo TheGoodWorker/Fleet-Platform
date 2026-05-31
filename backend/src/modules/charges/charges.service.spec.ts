@@ -167,7 +167,7 @@ describe('ChargesService', () => {
         'driver-id',
         'charge-id',
         ChargeType.FRANCHISE,
-        expect.objectContaining({ s: '75000' }),
+        new Decimal(CHARGE_AMOUNT),
       );
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'CHARGE_ADDED_TO_CONTRACT' }),

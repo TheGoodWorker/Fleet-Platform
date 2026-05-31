@@ -64,6 +64,13 @@ describe('DepositsService', () => {
   let service: DepositsService;
 
   beforeEach(async () => {
+    // resetAllMocks vide aussi les files mockResolvedValueOnce et les
+    // implémentations — évite la fuite de mocks entre tests (bleed).
+    jest.resetAllMocks();
+    mockLedger.createEntry.mockResolvedValue(undefined);
+    mockAudit.log.mockResolvedValue(undefined);
+    mockNotifications.send.mockResolvedValue(undefined);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DepositsService,
@@ -75,7 +82,6 @@ describe('DepositsService', () => {
     }).compile();
 
     service = module.get<DepositsService>(DepositsService);
-    jest.clearAllMocks();
   });
 
   // ─── create() ─────────────────────────────────────────────────────────────

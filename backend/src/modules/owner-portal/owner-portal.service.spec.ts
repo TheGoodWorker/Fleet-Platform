@@ -111,7 +111,7 @@ describe('OwnerPortalService', () => {
     it('accepte showDailyEntries=true pour un contrat non SIMPLE_RENTAL', async () => {
       mockPrisma.contract.findFirst.mockResolvedValue({
         id: 'c-2',
-        type: ContractType.FULL_MANAGED,
+        type: ContractType.PARTNER_FLEET,
       });
       const settings = { contractId: 'c-2', showDailyEntries: true };
       mockPrisma.ownerPortalVisibilitySettings.upsert.mockResolvedValue(settings);
@@ -207,7 +207,7 @@ describe('OwnerPortalService', () => {
     it('retourne rentalPayments null si contrat non SIMPLE_RENTAL', async () => {
       mockPrisma.contract.findFirst.mockResolvedValue({
         ...SIMPLE_RENTAL_CONTRACT,
-        type: ContractType.FULL_MANAGED,
+        type: ContractType.PARTNER_FLEET,
         ownerPortalSettings: null,
       });
 
@@ -230,7 +230,7 @@ describe('OwnerPortalService', () => {
     it('lève BadRequestException si contrat non SIMPLE_RENTAL', async () => {
       mockPrisma.contract.findFirst.mockResolvedValue({
         id: 'c-1',
-        type: ContractType.FULL_MANAGED,
+        type: ContractType.PARTNER_FLEET,
       });
       await expect(service.recordRentalPayment(dto, mockActor)).rejects.toThrow(BadRequestException);
     });

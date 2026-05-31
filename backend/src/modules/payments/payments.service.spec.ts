@@ -38,6 +38,7 @@ const mockPrisma = {
 
 const mockDailyEntries = {
   allocatePaymentToEntries: jest.fn(),
+  ensureEntriesAhead: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockLedger = { createEntry: jest.fn().mockResolvedValue(undefined) };
@@ -133,7 +134,7 @@ describe('PaymentsService', () => {
           'vehicle-id',
           'driver-id',
           'payment-id',
-          expect.objectContaining({ s: expect.any(String) }), // Decimal
+          new Decimal(20000), // montant exact passé en Decimal
           expect.any(Date),
         );
         expect(mockAudit.log).toHaveBeenCalledWith(

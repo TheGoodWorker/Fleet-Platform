@@ -46,7 +46,9 @@ const DAILY_AMOUNT = new Decimal(20000);
 
 const buildTx = (contractUpdateResult: any) => ({
   contract: {
-    findFirst: jest.fn(),
+    // Le service lit le contrat via tx.contract.findFirst — on délègue au mock
+    // racine que chaque test configure (dailyAmount/validatedDays/targetDays).
+    findFirst: jest.fn((...args: any[]) => mockPrisma.contract.findFirst(...args)),
     update: jest.fn().mockResolvedValue(contractUpdateResult),
   },
   dailyEntry: {
@@ -226,7 +228,7 @@ describe('DailyEntriesService — complétion automatique du contrat', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             status: DayStatus.PARTIALLY_PAID,
-            paidAmount: expect.objectContaining({ s: '5000' }),
+            paidAmount: new Decimal(5000),
           }),
         }),
       );
@@ -239,7 +241,7 @@ describe('DailyEntriesService — complétion automatique du contrat', () => {
   // ─── Scénario 4 : Libération véhicule → champs nullés correctement ─────────
 
   describe('libération véhicule à la complétion — champs nullés', () => {
-    it('met currentManagerId à null lors de la libération du véhicule', async () => {
+    it('libère le véhicule (contrat + chauffeur nullés) en conservant le manager', async () => {
       mockPrisma.contract.findFirst.mockResolvedValue({
         dailyAmount: DAILY_AMOUNT,
         validatedDays: 364,
@@ -265,17 +267,17 @@ describe('DailyEntriesService — complétion automatique du contrat', () => {
         new Date(),
       );
 
-      expect(tx.vehicle.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: VEHICLE_ID },
-          data: expect.objectContaining({
-            status: VehicleStatus.AVAILABLE,
-            currentContractId: null,
-            currentDriverId: null,
-            currentManagerId: null,
-          }),
-        }),
-      );
+      // La libération à la complétion détache le contrat et le chauffeur et
+      // repasse le véhicule AVAILABLE. L'assignation manager (currentManagerId)
+      // est indépendante du contrat (VehicleManagerAssignment) et persiste.
+      const updateCall = tx.vehicle.update.mock.calls[0][0];
+      expect(updateCall.where).toEqual({ id: VEHICLE_ID });
+      expect(updateCall.data).toMatchObject({
+        status: VehicleStatus.AVAILABLE,
+        currentContractId: null,
+        currentDriverId: null,
+      });
+      expect(updateCall.data).not.toHaveProperty('currentManagerId');
     });
   });
 });
