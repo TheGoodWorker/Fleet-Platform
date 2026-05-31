@@ -1,0 +1,2310 @@
+// =============================================================================
+// FLEET PLATFORM — PRISMA SCHEMA V2
+// PostgreSQL + NestJS + Prisma 7 ORM
+// Architecture : Modular Monolith
+// 45 modèles · 57 enums
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// SECTION 1 — ENUMS : IDENTITÉ & ACCÈS
+// =============================================================================
+
+enum UserRole {
+  ADMIN
+  SUPER_MANAGER
+  MANAGER
+  DRIVER
+  OWNER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum OwnerType {
+  INDIVIDUAL // Particulier
+  COMPANY    // Société externe
+  INTERNAL   // La société de gestion elle-même
+}
+
+enum OwnerStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// Modules pour organiser les permissions dans l'UI d'administration
+enum PermissionModule {
+  VEHICLES
+  DRIVERS
+  CONTRACTS
+  PAYMENTS
+  CHARGES
+  DEPOSITS
+  DOCUMENTS
+  INCIDENTS
+  ACCIDENTS
+  MAINTENANCE
+  INSPECTIONS
+  REPOSSESSIONS
+  SETTLEMENTS
+  NOTIFICATIONS
+  USERS
+  MANAGERS
+  ANALYTICS
+  AUDIT
+}
+
+// =============================================================================
+// SECTION 2 — ENUMS : VÉHICULE
+// =============================================================================
+
+enum VehicleStatus {
+  AVAILABLE
+  ASSIGNED
+  IN_SERVICE
+  IMMOBILIZED
+  IN_REPAIR
+  ACCIDENTED
+  PENDING_INSPECTION
+  REPOSSESSED
+  OUT_OF_SERVICE
+  SOLD
+}
+
+// Calendrier opérationnel — raison de non-disponibilité
+enum VehicleAvailabilityEventType {
+  IN_SERVICE        // En service normal
+  REST_DAY          // Jour de repos contractuel
+  IMMOBILIZED       // Immobilisation administrative
+  IN_REPAIR         // En réparation garage
+  ACCIDENTED        // Post-accident
+  TECHNICAL_VISIT   // Visite technique
+  SPECIAL_ABSENCE   // Absence spéciale chauffeur validée
+  REPOSSESSED       // Repris
+  OUT_OF_SERVICE    // Hors service
+  MAINTENANCE       // Maintenance planifiée
+}
+
+// =============================================================================
+// SECTION 3 — ENUMS : CHAUFFEUR
+// =============================================================================
+
+enum DriverStatus {
+  PENDING_KYC
+  PENDING_FIELD_VALIDATION
+  APPROVED
+  ACTIVE
+  SUSPENDED
+  AT_RISK
+  TERMINATED
+  BLACKLISTED
+}
+
+enum FieldValidationStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
+// =============================================================================
+// SECTION 4 — ENUMS : CONTRAT
+// =============================================================================
+
+enum ContractType {
+  OWNERSHIP_PROGRAM // Programme Propriété (Drive-to-Own)
+  PARTNER_FLEET     // Gestion Flotte Partenaire
+  SIMPLE_RENTAL     // Location Simple
+}
+
+enum ContractStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  SUSPENDED
+  IMMOBILIZED
+  BLOCKED
+  TERMINATED
+  COMPLETED
+  VEHICLE_REPOSSESSED
+}
+
+enum MgmtFeeType {
+  PERCENTAGE // Commission = % de la base définie par MgmtFeeBase
+  FIXED      // Commission = montant fixe mensuel
+  MIXED      // Commission = fixe + pourcentage (ex: 15 000 + 10%)
+}
+
+// Sur quelle valeur s'applique le pourcentage
+enum MgmtFeeBase {
+  NET_PROFIT    // % calculé sur (recettes - dépenses). Défaut recommandé.
+  GROSS_REVENUE // % calculé sur les recettes brutes encaissées
+}
+
+// =============================================================================
+// SECTION 5 — ENUMS : PAIEMENT & JOURNÉE
+// =============================================================================
+
+enum PaymentSource {
+  MANUAL
+  WAVE
+  ORANGE_MONEY
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
+// Méthode de règlement (utilisé pour OwnerSettlementPayment et autres)
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+  MOBILE_MONEY
+  WAVE         // Arbitrage validé Phase 2
+  ORANGE_MONEY // Arbitrage validé Phase 2
+  CHECK
+  OTHER
+}
+
+// Statut d'une journée dans le calendrier du contrat
+// VALIDATED = comptée dans validatedDays → progression avance
+// Progression = validatedDays / targetDays (jamais une date fixe)
+enum DayStatus {
+  VALIDATED      // Jour entièrement payé
+  PARTIALLY_PAID // Paiement partiel reçu
+  UNPAID         // Aucun paiement
+  REST_DAY       // Jour de repos (neutre, ne compte pas)
+  IMMOBILIZED    // Véhicule immobilisé (contrat gelé)
+  EXCUSED        // Absence spéciale validée
+  BLOCKED        // Bloqué (Carcul ou Admin)
+}
+
+// =============================================================================
+// SECTION 6 — ENUMS : CHARGES
+// =============================================================================
+
+enum ChargeType {
+  FRANCHISE
+  REPAIR
+  FINE         // Contravention
+  PENALTY      // Pénalité comportementale
+  TOWING       // Remorquage
+  TIRE
+  BATTERY
+  ACCESSORY_LOST
+  CLEANING
+  OTHER
+}
+
+enum ChargeStatus {
+  DRAFT
+  PENDING_VALIDATION
+  VALIDATED
+  REJECTED
+  PAID
+  PARTIALLY_PAID
+  ADDED_TO_CONTRACT
+}
+
+enum ChargeResponsible {
+  DRIVER
+  OWNER
+  COMPANY
+}
+
+// =============================================================================
+// SECTION 7 — ENUMS : CAUTION
+// =============================================================================
+
+enum DepositStatus {
+  PENDING
+  PARTIAL
+  PAID
+  USED
+  REFUNDED
+  PARTIAL_REFUNDED
+}
+
+enum DepositTransactionType {
+  PAYMENT
+  USAGE
+  REFUND
+  ADJUSTMENT
+}
+
+// =============================================================================
+// SECTION 8 — ENUMS : AFFECTATIONS
+// =============================================================================
+
+enum AssignmentSource {
+  CARCUL
+  MANAGER
+  ADMIN_CORRECTION
+}
+
+// =============================================================================
+// SECTION 9 — ENUMS : IMMOBILISATION
+// =============================================================================
+
+enum ImmobilizationResponsible {
+  DRIVER  // Accident responsable, négligence, mauvais usage
+  COMPANY // Visite technique, assurance, maintenance planifiée
+}
+
+enum ImmobilizationStatus {
+  ACTIVE
+  ENDED
+}
+
+// =============================================================================
+// SECTION 10 — ENUMS : INCIDENTS & ACCIDENTS
+// =============================================================================
+
+enum IncidentType {
+  BREAKDOWN // Panne
+  ACCIDENT
+  OTHER
+}
+
+enum IncidentStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AccidentStep {
+  DECLARED              // 1. Accident déclaré
+  PHOTOS_RECEIVED       // 2. Photos reçues
+  MANAGER_ARRIVED       // 3. Manager arrivé sur place
+  TOWING_REQUESTED      // 4. Remorque demandée
+  VEHICLE_TOWED         // 5. Véhicule remorqué
+  INSURANCE_DECLARED    // 6. Déclaration à l'assurance
+  EXPERT_VISITED        // 7. Expert passé
+  REPAIR_QUOTE_RECEIVED // 8. Bon de réparation reçu
+  GARAGE_STARTED        // 9. Entrée garage
+  REPAIR_IN_PROGRESS    // 10. Réparation en cours
+  REPAIR_COMPLETED      // 11. Réparation terminée
+  EXPERT_VALIDATION     // 12. Validation expert
+  EXIT_PERMIT_RECEIVED  // 13. Bon de sortie reçu
+  VEHICLE_RETURNED      // 14. Véhicule remis chauffeur
+}
+
+enum AccidentCaseStatus {
+  OPEN
+  CLOSED
+  DISPUTED
+}
+
+enum AccidentExpenseType {
+  POLICE_REPORT
+  TOWING
+  TRANSPORT
+  PARKING
+  FILE_FEE
+  ASSISTANCE
+  OTHER
+}
+
+// =============================================================================
+// SECTION 11 — ENUMS : MAINTENANCE & KILOMÉTRAGE
+// =============================================================================
+
+enum MaintenanceType {
+  OIL_CHANGE      // Vidange (tous les 10 000 km)
+  TIRE_CHANGE
+  REPAIR
+  TECHNICAL_VISIT // Visite technique obligatoire
+  BATTERY_CHANGE
+  OTHER
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MileageSource {
+  DRIVER   // Photo tableau de bord envoyée par le chauffeur
+  MANAGER  // Saisi manuellement par le Manager
+  CARCUL   // Remonté automatiquement via GPS Carcul
+}
+
+// =============================================================================
+// SECTION 12 — ENUMS : CARBURANT
+// =============================================================================
+
+// Niveau de carburant standardisé (remplace les String libres dans Inspection)
+enum FuelLevel {
+  FULL
+  THREE_QUARTERS
+  HALF
+  QUARTER
+  EMPTY
+  UNKNOWN
+}
+
+enum FuelTransactionType {
+  INITIAL_FULL_TANK // Remise véhicule avec plein (règle obligatoire)
+  RETURN_CHECK      // Vérification au retour / reprise
+  REFILL            // Rechargement
+  ADJUSTMENT        // Ajustement manuel
+  PENALTY           // Pénalité carburant manquant
+  OTHER
+}
+
+// =============================================================================
+// SECTION 13 — ENUMS : MÉDIAS (Photo + Document)
+// =============================================================================
+
+enum MediaType {
+  PHOTO
+  DOCUMENT
+  VIDEO
+  AUDIO
+  OTHER
+}
+
+// Source de création du média — PhotoSource absorbé ici
+// IN_APP_CAMERA = obligatoire pour photos chauffeur (anti-fraude)
+enum MediaSource {
+  IN_APP_CAMERA // Prise directement dans l'app — seule source autorisée pour chauffeurs
+  UPLOAD        // Upload manuel (Staff/Admin)
+  SYSTEM        // Généré par le système
+  IMPORT        // Import externe (Admin uniquement)
+}
+
+// =============================================================================
+// SECTION 14 — ENUMS : MISSIONS PHOTO
+// =============================================================================
+
+enum PhotoMissionType {
+  REGULAR_VEHICLE   // Véhicule extérieur — 2x par semaine minimum
+  DASHBOARD_MILEAGE // Tableau de bord kilométrage — 1x par semaine minimum
+  BREAKDOWN         // Lors d'une déclaration de panne
+  ACCIDENT          // Lors d'un accident
+  INSPECTION        // Lors d'une inspection remise/reprise
+  TOWING            // Remorquage (plaque visible obligatoire)
+}
+
+enum PhotoMissionStatus {
+  PENDING
+  SUBMITTED
+  VALIDATED
+  REJECTED
+  OVERDUE
+}
+
+// =============================================================================
+// SECTION 15 — ENUMS : INSPECTIONS
+// =============================================================================
+
+enum InspectionType {
+  VEHICLE_DELIVERY // Remise du véhicule au chauffeur
+  VEHICLE_RETURN   // Reprise du véhicule
+  REGULAR          // Inspection régulière sur le terrain
+  INCIDENT         // Liée à un incident / panne
+}
+
+enum InspectionStatus {
+  PENDING_DRIVER    // En attente de la signature chauffeur
+  DRIVER_SIGNED     // Chauffeur a signé sa partie
+  PENDING_MANAGER   // En attente de la signature manager
+  MANAGER_SIGNED    // Manager a signé
+  COMPLETED         // Les deux ont signé — inspection close
+  DISPUTED          // Litige sur un élément
+}
+
+enum InspectionItemStatus {
+  OK
+  MISSING
+  DAMAGED
+}
+
+// =============================================================================
+// SECTION 16 — ENUMS : DOCUMENTS
+// =============================================================================
+
+enum DocumentType {
+  INSURANCE
+  TECHNICAL_VISIT
+  GRAY_CARD            // Carte grise
+  PARKING_CARD         // Carte de stationnement
+  STICKER              // Vignette
+  PATENT               // Patente
+  ADMIN_AUTHORIZATION  // Autorisation administrative
+  DRIVER_LICENSE
+  NATIONAL_ID
+  KYC_DOCUMENT
+  CONTRACT_DOCUMENT
+  ACCIDENT_REPORT
+  INSURANCE_CLAIM
+  REPAIR_QUOTE
+  REPAIR_EXIT_PERMIT   // Bon de sortie garage
+  FRANCHISE_PROOF
+  TOWING_PROOF
+  CONTRAVENTION_NOTICE
+  OTHER
+}
+
+enum DocumentStatus {
+  VALID
+  EXPIRING_SOON // Expire dans 30 jours ou moins
+  EXPIRED
+  ALWAYS_VALID  // Pas de date d'expiration (ex: carte grise)
+  ARCHIVED      // Version remplacée
+}
+
+enum DocumentEntityType {
+  VEHICLE
+  DRIVER
+  CONTRACT
+  OWNER
+  INCIDENT
+  ACCIDENT_CASE
+  CHARGE
+  MAINTENANCE
+  IMMOBILIZATION
+  CONTRAVENTION
+  REPOSSESSION
+}
+
+// =============================================================================
+// SECTION 17 — ENUMS : ABSENCES SPÉCIALES
+// =============================================================================
+
+enum SpecialAbsenceStatus {
+  PENDING           // Demande soumise par le chauffeur
+  MANAGER_REVIEWED  // Manager a examiné (peut approuver ou escalader)
+  APPROVED          // Approuvée (Manager seul ou + Super Manager)
+  REJECTED          // Refusée
+  CANCELLED         // Annulée par le chauffeur
+}
+
+// =============================================================================
+// SECTION 18 — ENUMS : TÂCHES
+// =============================================================================
+
+enum TaskType {
+  TASK
+  APPOINTMENT // Rendez-vous (garage, expert, bureau, etc.)
+  REMINDER    // Rappel automatique
+}
+
+enum TaskStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum TaskRelatedEntityType {
+  VEHICLE
+  DRIVER
+  CONTRACT
+  INCIDENT
+  ACCIDENT
+  MAINTENANCE
+  DOCUMENT
+  CHARGE
+  REPOSSESSION
+  FUEL
+  OTHER
+}
+
+// =============================================================================
+// SECTION 19 — ENUMS : NOTIFICATIONS
+// =============================================================================
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL // Uniquement ces deux niveaux atteignent l'Admin
+}
+
+// Enum complet — toute extension passe par une migration (contrôle strict)
+enum NotificationType {
+  // ── Chauffeur ──
+  PAYMENT_RECEIVED
+  PAYMENT_INCOMPLETE
+  VEHICLE_BLOCKED
+  PHOTO_MISSION_REQUIRED
+  PHOTO_MISSION_OVERDUE
+  VEHICLE_RETURNED_TO_DRIVER
+  CONTRACT_ACTIVATED
+  CONTRACT_SUSPENDED
+  SPECIAL_ABSENCE_APPROVED
+  SPECIAL_ABSENCE_REJECTED
+  // ── Manager ──
+  APPOINTMENT_CREATED
+  MAINTENANCE_DUE_SOON
+  TECHNICAL_VISIT_DUE_SOON
+  DOCUMENT_EXPIRING_SOON
+  DOCUMENT_EXPIRED
+  ACCIDENT_DECLARED
+  BREAKDOWN_DECLARED
+  CHARGE_PENDING_VALIDATION
+  CHARGE_VALIDATED
+  SPECIAL_ABSENCE_REQUESTED
+  KYC_VALIDATED
+  VEHICLE_IMMOBILIZED
+  VEHICLE_RELEASED
+  DEPOSIT_VALIDATION_REQUIRED
+  // ── Super Manager ──
+  PENALTY_VALIDATED
+  REPOSSESSION_REQUESTED
+  REPOSSESSION_APPROVED
+  // ── Propriétaire ──
+  OWNER_SETTLEMENT_READY
+  OWNER_SETTLEMENT_PAID
+  // ── Admin (HIGH/CRITICAL uniquement) ──
+  CRITICAL_ACCIDENT
+  FRAUD_ALERT
+  LARGE_UNPAID
+}
+
+// =============================================================================
+// SECTION 20 — ENUMS : REPRISE VÉHICULE
+// =============================================================================
+
+enum RepossessionStatus {
+  PROPOSED          // Manager propose
+  SM_VALIDATED      // Super Manager valide
+  ADMIN_APPROVED    // Admin approuve définitivement
+  MISSION_ONGOING   // Mission de récupération en cours
+  INSPECTION_DONE   // Inspection post-reprise effectuée
+  CHARGES_CALCULATED
+  CONTRACT_CLOSED
+  VEHICLE_AVAILABLE // Prêt pour nouveau contrat
+}
+
+// =============================================================================
+// SECTION 21 — ENUMS : RELEVÉ MENSUEL (PARTNER_FLEET)
+// =============================================================================
+
+enum SettlementStatus {
+  DRAFT
+  PENDING_APPROVAL    // Prêt, en attente validation
+  APPROVED            // Chiffres figés définitivement
+  SENT_TO_OWNER       // Relevé envoyé au propriétaire
+  OWNER_ACKNOWLEDGED  // Propriétaire a consulté et accepté
+  PAID                // Règlement intégral effectué
+  PARTIALLY_PAID      // Acompte versé
+  DISPUTED            // Propriétaire conteste les chiffres
+}
+
+// =============================================================================
+// SECTION 22 — ENUMS : CONTRAVENTIONS
+// =============================================================================
+
+enum ContraventionSource {
+  CARCUL // Remonté automatiquement par GPS Carcul
+  MANUAL // Saisi manuellement
+}
+
+// =============================================================================
+// SECTION 23 — ENUMS : GRAND LIVRE
+// =============================================================================
+
+enum LedgerEntryType {
+  DAILY_REVENUE
+  MANUAL_PAYMENT
+  CHARGE
+  DEPOSIT_PAYMENT
+  DEPOSIT_USAGE
+  DEPOSIT_REFUND
+  OWNER_SETTLEMENT
+  MANAGEMENT_COMMISSION
+  MAINTENANCE_COST
+  ACCIDENT_EXPENSE
+  CONTRAVENTION
+  ADJUSTMENT
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
+// =============================================================================
+// MODÈLE 1 — USER
+// =============================================================================
+
+model User {
+  id           String     @id @default(uuid())
+  role         UserRole
+  firstName    String
+  lastName     String
+  email        String?    @unique
+  phone        String?    @unique
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  avatarUrl    String?
+  fcmToken     String?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+
+  // Profils spécialisés
+  driver Driver?
+  owner  Owner?
+
+  // Véhicules dont cet utilisateur est le manager actif courant (dénormalisé)
+  currentlyManagedVehicles Vehicle[] @relation("VehicleCurrentManager")
+
+  // Actions staff — relations nommées car plusieurs FK User→ même cible
+  managerAssignments     VehicleManagerAssignment[] @relation("ManagerUser")
+  createdPayments        Payment[]                  @relation("PaymentCreatedBy")
+  createdCharges         Charge[]                   @relation("ChargeCreatedBy")
+  validatedCharges       Charge[]                   @relation("ChargeValidatedBy")
+  createdImmobilizations Immobilization[]           @relation("ImmobilizationCreatedBy")
+  createdTasks           Task[]                     @relation("TaskCreatedBy")
+  assignedTasks          Task[]                     @relation("TaskAssignedTo")
+  notifications          Notification[]
+  auditLogs              AuditLog[]                 @relation("AuditActor")
+  permissionOverrides    UserPermissionOverride[]
+
+  @@map("users")
+  @@index([role])
+  @@index([status])
+}
+
+// =============================================================================
+// MODÈLE 2 — PERMISSION
+// =============================================================================
+// Chaque permission est une capacité précise (code unique).
+// Exemples: can_validate_charge, can_approve_repossession, can_view_owner_finances.
+// Les defaults par rôle sont dans RolePermission.
+// Les exceptions individuelles sont dans UserPermissionOverride.
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique // ex: "can_validate_charge"
+  name        String           // ex: "Valider une charge"
+  description String?
+  module      PermissionModule
+  isActive    Boolean          @default(true)
+
+  rolePermissions RolePermission[]
+  userOverrides   UserPermissionOverride[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("permissions")
+  @@index([module])
+  @@index([isActive])
+}
+
+// =============================================================================
+// MODÈLE 3 — ROLE PERMISSION (Permissions par défaut par rôle)
+// =============================================================================
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  role         UserRole
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  isGranted    Boolean    @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([role, permissionId])
+  @@map("role_permissions")
+  @@index([role])
+}
+
+// =============================================================================
+// MODÈLE 4 — USER PERMISSION OVERRIDE (Exception individuelle)
+// =============================================================================
+// L'Admin peut accorder ou révoquer une permission précise à un utilisateur
+// spécifique, indépendamment de son rôle. Exemple : donner can_approve_repossession
+// à un Super Manager expérimenté, ou révoquer can_create_manager temporairement.
+
+model UserPermissionOverride {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  isGranted   Boolean   // true = accorder, false = révoquer
+  reason      String?
+  grantedById String?
+  expiresAt   DateTime? // Null = permanent
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, permissionId])
+  @@map("user_permission_overrides")
+  @@index([userId])
+}
+
+// =============================================================================
+// MODÈLE 5 — DRIVER
+// =============================================================================
+
+model Driver {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  status     DriverStatus @default(PENDING_KYC)
+  scoreValue Float        @default(100.0)
+
+  idCardNumber     String?
+  licenseNumber    String?
+  address          String?
+  emergencyContact String?
+  familyContacts   String[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kyc             DriverKYC?
+  fieldValidation DriverFieldValidation?
+
+  // Véhicule(s) dont ce chauffeur est le chauffeur courant (dénormalisé)
+  currentVehicles Vehicle[] @relation("VehicleCurrentDriver")
+
+  contracts         Contract[]
+  driverAssignments VehicleDriverAssignment[]
+  payments          Payment[]
+  charges           Charge[]               @relation("DriverCharge")
+  specialAbsences   SpecialAbsence[]
+  photoMissions     PhotoMission[]
+  mileageRecords    MileageRecord[]
+  fuelTransactions  FuelTransaction[]
+  incidents         Incident[]             @relation("DriverIncident")
+  contraventions    Contravention[]
+  driverScoreEvents DriverScoreEvent[]
+
+  @@map("drivers")
+  @@index([status])
+}
+
+// =============================================================================
+// MODÈLE 6 — DRIVER KYC
+// =============================================================================
+
+model DriverKYC {
+  id       String @id @default(uuid())
+  driverId String @unique
+  driver   Driver @relation(fields: [driverId], references: [id])
+
+  fullNameVerified Boolean @default(false)
+  photoVerified    Boolean @default(false)
+  idCardVerified   Boolean @default(false)
+  licenseVerified  Boolean @default(false)
+  phoneVerified    Boolean @default(false)
+
+  photoUrl   String?
+  idCardUrl  String?
+  licenseUrl String?
+
+  validatedById String?
+  validatedAt   DateTime?
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("driver_kyc")
+}
+
+// =============================================================================
+// MODÈLE 7 — DRIVER FIELD VALIDATION (Validation terrain par Manager)
+// =============================================================================
+
+model DriverFieldValidation {
+  id       String @id @default(uuid())
+  driverId String @unique
+  driver   Driver @relation(fields: [driverId], references: [id])
+
+  homeVisitDone       Boolean               @default(false)
+  homeVisitPhotoUrl   String?
+  gpsLocationLat      Float?
+  gpsLocationLng      Float?
+  environmentPhotoUrl String?
+  resourcePersonName  String?
+  resourcePersonPhone String?
+  familyContactsNotes String?
+  managerComment      String?
+
+  managerId  String?
+  status     FieldValidationStatus @default(PENDING) // Remplace String "PENDING"
+  reviewedAt DateTime?
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("driver_field_validations")
+}
+
+// =============================================================================
+// MODÈLE 8 — OWNER
+// =============================================================================
+
+model Owner {
+  id     String  @id @default(uuid())
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
+
+  type    OwnerType
+  name    String
+  email   String?
+  phone   String?
+  address String?
+  status  OwnerStatus @default(ACTIVE) // Remplace String "ACTIVE"
+  notes   String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  vehicles           Vehicle[]
+  contracts          Contract[]
+  monthlySettlements MonthlySettlement[]
+
+  @@map("owners")
+  @@index([type])
+  @@index([status])
+}
+
+// =============================================================================
+// MODÈLE 9 — VEHICLE
+// =============================================================================
+// currentManager / currentDriver / currentContract sont des relations Prisma réelles
+// pointant vers l'état courant (dénormalisé pour performance des dashboards).
+// Deux relations nommées entre Vehicle et Contract :
+//   "ContractVehicle"      : Vehicle.contracts ↔ Contract.vehicle  (1:N)
+//   "VehicleCurrentContract": Vehicle.currentContract ↔ Contract.currentForVehicle (0:1)
+
+model Vehicle {
+  id      String  @id @default(uuid())
+  ownerId String?
+  owner   Owner?  @relation(fields: [ownerId], references: [id])
+
+  plateNumber  String        @unique
+  vin          String?       @unique
+  brand        String
+  model        String
+  year         Int?
+  color        String?
+  fuelType     String?       // GASOLINE, DIESEL, HYBRID, ELECTRIC
+  transmission String?       // MANUAL, AUTOMATIC
+  seats        Int?
+
+  status VehicleStatus @default(AVAILABLE)
+
+  // ── Relations dénormalisées — état courant ──────────────────────────────────
+  currentManagerId String?
+  currentManager   User?     @relation("VehicleCurrentManager", fields: [currentManagerId], references: [id])
+
+  currentDriverId  String?
+  currentDriver    Driver?   @relation("VehicleCurrentDriver", fields: [currentDriverId], references: [id])
+
+  currentContractId String?  @unique
+  currentContract   Contract? @relation("VehicleCurrentContract", fields: [currentContractId], references: [id])
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // GPS / Carcul (typo corrigée : carcoul → carcul)
+  carculVehicleId  String?
+  lastKnownMileage Int?
+  lastMileageAt    DateTime?
+
+  scoreValue Float @default(100.0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Tous les contrats du véhicule (historique complet)
+  contracts Contract[] @relation("ContractVehicle")
+
+  managerAssignments VehicleManagerAssignment[]
+  driverAssignments  VehicleDriverAssignment[]
+  payments           Payment[]
+  charges            Charge[]
+  immobilizations    Immobilization[]
+  incidents          Incident[]
+  maintenanceRecords MaintenanceRecord[]
+  mileageRecords     MileageRecord[]
+  fuelTransactions   FuelTransaction[]
+  photoMissions      PhotoMission[]
+  inspections        Inspection[]
+  contraventions     Contravention[]
+  repossessions      VehicleRepossession[]
+  vehicleScoreEvents VehicleScoreEvent[]
+  monthlySettlements MonthlySettlement[]
+  availabilityEvents VehicleAvailabilityEvent[]
+
+  @@map("vehicles")
+  @@index([status])
+  @@index([ownerId])
+  @@index([currentManagerId])
+  @@index([currentDriverId])
+}
+
+// =============================================================================
+// MODÈLE 10 — VEHICLE MANAGER ASSIGNMENT
+// =============================================================================
+
+model VehicleManagerAssignment {
+  id        String  @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+  managerId String
+  manager   User    @relation("ManagerUser", fields: [managerId], references: [id])
+
+  startDate DateTime
+  endDate   DateTime?
+  isActive  Boolean   @default(true)
+  reason    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicle_manager_assignments")
+  @@index([vehicleId, isActive])
+  @@index([managerId])
+}
+
+// =============================================================================
+// MODÈLE 11 — VEHICLE DRIVER ASSIGNMENT
+// =============================================================================
+
+model VehicleDriverAssignment {
+  id         String    @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+  driverId   String
+  driver     Driver    @relation(fields: [driverId], references: [id])
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+
+  startDate     DateTime
+  endDate       DateTime?
+  isActive      Boolean          @default(true)
+  source        AssignmentSource
+  scheduleRules Json?            // Planning multi-chauffeurs (PARTNER_FLEET)
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicle_driver_assignments")
+  @@index([vehicleId, isActive])
+  @@index([driverId])
+  @@index([contractId])
+}
+
+// =============================================================================
+// MODÈLE 12 — CONTRACT
+// =============================================================================
+// Deux relations nommées vers Vehicle :
+//   vehicle          : le véhicule couvert par ce contrat (via "ContractVehicle")
+//   currentForVehicle: ce contrat est-il le contrat actif du véhicule? (inverse de "VehicleCurrentContract")
+
+model Contract {
+  id     String         @id @default(uuid())
+  type   ContractType
+  status ContractStatus @default(DRAFT)
+
+  vehicleId String
+  vehicle   Vehicle @relation("ContractVehicle", fields: [vehicleId], references: [id])
+
+  driverId String? // Null pour PARTNER_FLEET multi-chauffeurs
+  driver   Driver? @relation(fields: [driverId], references: [id])
+
+  ownerId String?
+  owner   Owner?  @relation(fields: [ownerId], references: [id])
+
+  managerId String // User ID du manager responsable
+
+  // ── Termes financiers ──────────────────────────────────────────────────────
+  dailyAmount   Decimal @db.Decimal(12, 2)
+  targetDays    Int?    // OWNERSHIP_PROGRAM: total jours à payer
+  validatedDays Int     @default(0) // Incrémenté à chaque DailyEntry VALIDATED
+
+  restDay Int? // 0=Dimanche, 1=Lundi … 6=Samedi
+
+  // Frais de gestion (PARTNER_FLEET uniquement)
+  mgmtFeeType       MgmtFeeType?
+  mgmtFeePercentage Decimal?     @db.Decimal(5, 2)
+  mgmtFeeFixed      Decimal?     @db.Decimal(12, 2)
+  mgmtFeeBase       MgmtFeeBase? // Null acceptable si mgmtFeeType = FIXED
+  // ───────────────────────────────────────────────────────────────────────────
+
+  startDate   DateTime?
+  endDate     DateTime?
+  activatedAt DateTime?
+  closedAt    DateTime?
+
+  // ── Checklist pré-activation — toutes doivent être true avant ACTIVE ───────
+  kycValidated    Boolean @default(false)
+  fieldValidated  Boolean @default(false)
+  depositPaid     Boolean @default(false)
+  contractSigned  Boolean @default(false)
+  managerApproved Boolean @default(false)
+  adminApproved   Boolean @default(false)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  chargePolicy Json?
+  notes        String?
+
+  contractNumber String? @unique
+
+  // Succession de contrats (même véhicule, chauffeurs successifs)
+  parentContractId String?
+  parentContract   Contract?  @relation("ContractSuccession", fields: [parentContractId], references: [id])
+  childContracts   Contract[] @relation("ContractSuccession")
+
+  // Inverse de Vehicle.currentContract
+  currentForVehicle Vehicle? @relation("VehicleCurrentContract")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  payments           Payment[]
+  dailyEntries       DailyEntry[]
+  charges            Charge[]
+  deposit            Deposit?
+  immobilizations    Immobilization[]
+  inspections        Inspection[]
+  specialAbsences    SpecialAbsence[]
+  driverAssignments  VehicleDriverAssignment[]
+  fuelTransactions   FuelTransaction[]
+  availabilityEvents VehicleAvailabilityEvent[]
+  repossession       VehicleRepossession?
+  monthlySettlements MonthlySettlement[]
+
+  @@map("contracts")
+  @@index([status])
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([type])
+}
+
+// =============================================================================
+// MODÈLE 13 — PAYMENT
+// =============================================================================
+
+model Payment {
+  id         String   @id @default(uuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+  vehicleId  String
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
+  driverId   String
+  driver     Driver   @relation(fields: [driverId], references: [id])
+
+  amount             Decimal       @db.Decimal(12, 2)
+  source             PaymentSource @default(MANUAL)
+  status             PaymentStatus @default(VALIDATED)
+  validatedDaysCount Int           @default(0)
+
+  paidAt    DateTime
+  reference String?
+  notes     String?
+
+  createdById String
+  createdBy   User   @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+
+  dailyEntries           DailyEntry[]
+  settlementRevenueLines SettlementRevenueLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payments")
+  @@index([contractId])
+  @@index([driverId])
+  @@index([paidAt])
+}
+
+// =============================================================================
+// MODÈLE 14 — DAILY ENTRY (Moteur de progression — "voitures")
+// =============================================================================
+// Un enregistrement par jour calendaire par contrat.
+// RÈGLE FONDAMENTALE :
+//   Un jour est VALIDATED uniquement quand le montant daily_amount est intégralement payé.
+//   Progression OWNERSHIP_PROGRAM = contract.validatedDays / contract.targetDays
+//   La date de fin n'est JAMAIS fixe — elle se prolonge naturellement.
+// chargeType non-null = jour spécial avec label (FR, REP, PEN…) dans l'UI chauffeur.
+
+model DailyEntry {
+  id         String   @id @default(uuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+  vehicleId  String
+  driverId   String?
+
+  date   DateTime  @db.Date
+  status DayStatus @default(UNPAID)
+
+  expectedAmount Decimal? @db.Decimal(12, 2)
+  paidAmount     Decimal? @db.Decimal(12, 2)
+
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+
+  // Jour spécial = charge ajoutée au contrat (franchise FR, réparation REP, etc.)
+  chargeId   String?
+  chargeType ChargeType?
+
+  immobilizationId String?
+
+  isRestDay Boolean @default(false)
+  isExcused Boolean @default(false)
+
+  validatedById String?
+  validatedAt   DateTime?
+  comment       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contractId, date])
+  @@map("daily_entries")
+  @@index([contractId, status])
+  @@index([date])
+}
+
+// =============================================================================
+// MODÈLE 15 — CHARGE ADDITIONNELLE
+// =============================================================================
+// Workflow : Manager crée (DRAFT) → soumet (PENDING_VALIDATION)
+//            → Super Manager valide ou rejette
+//            → Si ADDED_TO_CONTRACT : génère des DailyEntry spéciaux supplémentaires
+
+model Charge {
+  id     String       @id @default(uuid())
+  type   ChargeType
+  status ChargeStatus @default(DRAFT)
+
+  amount     Decimal @db.Decimal(12, 2)
+  paidAmount Decimal @db.Decimal(12, 2) @default(0)
+
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+  driverId   String?
+  driver     Driver?   @relation("DriverCharge", fields: [driverId], references: [id])
+
+  proposedResponsible  ChargeResponsible?
+  validatedResponsible ChargeResponsible?
+
+  description String?
+  notes       String?
+
+  // Manager crée, Super Manager valide
+  createdById     String
+  createdBy       User      @relation("ChargeCreatedBy", fields: [createdById], references: [id])
+  validatedById   String?
+  validatedBy     User?     @relation("ChargeValidatedBy", fields: [validatedById], references: [id])
+  validatedAt     DateTime?
+  rejectionReason String?
+
+  incidentId String?
+  incident   Incident? @relation(fields: [incidentId], references: [id])
+
+  // Jours supplémentaires générés dans DailyEntry quand ADDED_TO_CONTRACT
+  extraDaysAdded Int?
+
+  settlementExpenseLines SettlementExpenseLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("charges")
+  @@index([vehicleId])
+  @@index([contractId])
+  @@index([status])
+  @@index([type])
+}
+
+// =============================================================================
+// MODÈLE 16 — DEPOSIT (Caution)
+// =============================================================================
+// Règle : 2 jours de recette OU 50 000 FCFA (valeur par défaut).
+// Workflow : Super Manager propose → Admin valide si montant non-standard.
+// isStandardAmount = false déclenche la validation Admin obligatoire.
+
+model Deposit {
+  id         String   @id @default(uuid())
+  contractId String   @unique
+  contract   Contract @relation(fields: [contractId], references: [id])
+
+  recommendedAmount  Decimal  @db.Decimal(12, 2) // Calculé auto (2j × daily_amount)
+  requestedAmount    Decimal  @db.Decimal(12, 2) // Montant proposé par Super Manager
+  validatedAmount    Decimal? @db.Decimal(12, 2) // Montant final validé par Admin
+  paidAmount         Decimal  @db.Decimal(12, 2) @default(0)
+  remainingAmount    Decimal  @db.Decimal(12, 2) @default(0)
+  usedAmount         Decimal  @db.Decimal(12, 2) @default(0)
+  refundedAmount     Decimal  @db.Decimal(12, 2) @default(0)
+
+  status           DepositStatus @default(PENDING)
+  isStandardAmount Boolean       @default(true) // False = Admin doit valider
+
+  // Super Manager propose le montant
+  proposedById String?
+  // Admin valide si différent de la règle standard
+  adminValidatedById String?
+  validatedAt        DateTime?
+  notes              String?
+
+  transactions DepositTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("deposits")
+}
+
+// =============================================================================
+// MODÈLE 17 — DEPOSIT TRANSACTION
+// =============================================================================
+
+model DepositTransaction {
+  id        String  @id @default(uuid())
+  depositId String
+  deposit   Deposit @relation(fields: [depositId], references: [id])
+
+  type        DepositTransactionType
+  amount      Decimal                @db.Decimal(12, 2)
+  description String?
+  reference   String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@map("deposit_transactions")
+  @@index([depositId])
+}
+
+// =============================================================================
+// MODÈLE 18 — CONTRAVENTION
+// =============================================================================
+
+model Contravention {
+  id         String  @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle @relation(fields: [vehicleId], references: [id])
+  driverId   String?
+  driver     Driver? @relation(fields: [driverId], references: [id])
+  contractId String?
+
+  amount    Decimal             @db.Decimal(12, 2)
+  source    ContraventionSource @default(MANUAL) // Remplace String "MANUAL"
+  carculRef String?             // Référence Carcul (corrigé: carcoulRef → carculRef)
+
+  infraction String?
+  date       DateTime
+  location   String?
+
+  isPaid     Boolean  @default(false)
+  paidAt     DateTime?
+  paidAmount Decimal? @db.Decimal(12, 2)
+
+  chargeId String? // Si convertie en Charge formelle
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("contraventions")
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([isPaid])
+}
+
+// =============================================================================
+// MODÈLE 19 — IMMOBILIZATION
+// =============================================================================
+
+model Immobilization {
+  id         String    @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+
+  responsible ImmobilizationResponsible
+  status      ImmobilizationStatus      @default(ACTIVE)
+
+  reason    String
+  details   String?
+
+  startDate    DateTime
+  estimatedEnd DateTime?
+  actualEnd    DateTime?
+  resumeDate   DateTime?
+
+  createdById String
+  createdBy   User    @relation("ImmobilizationCreatedBy", fields: [createdById], references: [id])
+
+  incidentId String?
+  incident   Incident? @relation(fields: [incidentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("immobilizations")
+  @@index([vehicleId, status])
+  @@index([contractId])
+}
+
+// =============================================================================
+// MODÈLE 20 — SPECIAL ABSENCE
+// =============================================================================
+// Workflow : Chauffeur soumet → Manager examine (peut approuver seul pour absences courtes)
+//            → Super Manager valide si durée longue ou cas complexe.
+
+model SpecialAbsence {
+  id         String   @id @default(uuid())
+  driverId   String
+  driver     Driver   @relation(fields: [driverId], references: [id])
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+
+  reason        String
+  details       String?
+  startDate     DateTime
+  estimatedDays Int
+
+  status SpecialAbsenceStatus @default(PENDING) // Remplace String "PENDING"
+
+  // Manager qui a examiné la demande
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewComment   String?
+
+  // Super Manager si escalade nécessaire
+  smValidatedById String?
+  smValidatedAt   DateTime?
+
+  actualEnd DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("special_absences")
+  @@index([driverId])
+  @@index([contractId])
+  @@index([status])
+}
+
+// =============================================================================
+// MODÈLE 21 — INCIDENT
+// =============================================================================
+
+model Incident {
+  id       String           @id @default(uuid())
+  type     IncidentType
+  status   IncidentStatus   @default(OPEN)
+  severity IncidentSeverity @default(MEDIUM)
+
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+  driverId  String?
+  driver    Driver? @relation("DriverIncident", fields: [driverId], references: [id])
+  managerId String?
+
+  description String
+  notes       String?
+
+  locationLat Float?
+  locationLng Float?
+  occurredAt  DateTime
+
+  resolvedAt DateTime?
+
+  accidentCase    AccidentCase?
+  charges         Charge[]
+  immobilizations Immobilization[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("incidents")
+  @@index([vehicleId])
+  @@index([type, status])
+  @@index([occurredAt])
+}
+
+// =============================================================================
+// MODÈLE 22 — ACCIDENT CASE (Dossier accident — 14 étapes)
+// =============================================================================
+
+model AccidentCase {
+  id         String   @id @default(uuid())
+  incidentId String   @unique
+  incident   Incident @relation(fields: [incidentId], references: [id])
+
+  insuranceFileNumber String?
+  currentStep         AccidentStep     @default(DECLARED)
+  status              AccidentCaseStatus @default(OPEN) // Remplace String "OPEN"
+
+  insuranceCompany String?
+  insuranceDocUrl  String?
+
+  towingCompany      String?
+  towingCost         Decimal? @db.Decimal(12, 2)
+  towingPhotoUrl     String?
+  towingPlateVisible Boolean  @default(false)
+
+  declaredAt            DateTime?
+  photosReceivedAt      DateTime?
+  managerArrivedAt      DateTime?
+  towingRequestedAt     DateTime?
+  vehicleTowedAt        DateTime?
+  insuranceDeclaredAt   DateTime?
+  expertVisitedAt       DateTime?
+  repairQuoteReceivedAt DateTime?
+  garageStartedAt       DateTime?
+  repairCompletedAt     DateTime?
+  expertValidationAt    DateTime?
+  exitPermitAt          DateTime?
+  vehicleReturnedAt     DateTime?
+
+  stepHistory AccidentStepHistory[]
+  expenses    AccidentExpense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("accident_cases")
+}
+
+// =============================================================================
+// MODÈLE 23 — ACCIDENT STEP HISTORY
+// =============================================================================
+
+model AccidentStepHistory {
+  id             String       @id @default(uuid())
+  accidentCaseId String
+  accidentCase   AccidentCase @relation(fields: [accidentCaseId], references: [id])
+
+  step          AccidentStep
+  completedAt   DateTime
+  completedById String?
+  notes         String?
+  documentUrl   String?
+
+  createdAt DateTime @default(now())
+
+  @@map("accident_step_history")
+  @@index([accidentCaseId])
+}
+
+// =============================================================================
+// MODÈLE 24 — ACCIDENT EXPENSE
+// =============================================================================
+// Super Manager valide les dépenses si charge financière significative.
+
+model AccidentExpense {
+  id             String       @id @default(uuid())
+  accidentCaseId String
+  accidentCase   AccidentCase @relation(fields: [accidentCaseId], references: [id])
+
+  type        AccidentExpenseType // Remplace String libre
+  amount      Decimal             @db.Decimal(12, 2)
+  description String?
+
+  responsible ChargeResponsible?
+
+  isPaid  Boolean   @default(false)
+  paidAt  DateTime?
+
+  documentUrl String?
+
+  // Super Manager valide si dépense significative
+  validatedById   String?
+  validatedAt     DateTime?
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("accident_expenses")
+  @@index([accidentCaseId])
+}
+
+// =============================================================================
+// MODÈLE 25 — MAINTENANCE RECORD
+// =============================================================================
+
+model MaintenanceRecord {
+  id        String  @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+
+  type   MaintenanceType
+  status MaintenanceStatus @default(SCHEDULED)
+
+  mileageAtService Int?
+  scheduledAt      DateTime?
+  completedAt      DateTime?
+
+  garage      String?
+  cost        Decimal? @db.Decimal(12, 2)
+  description String?
+  notes       String?
+
+  createdById String?
+
+  settlementExpenseLines SettlementExpenseLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("maintenance_records")
+  @@index([vehicleId])
+  @@index([type, status])
+}
+
+// =============================================================================
+// MODÈLE 26 — MILEAGE RECORD (Relevé kilométrique)
+// =============================================================================
+
+model MileageRecord {
+  id        String  @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+  driverId  String?
+  driver    Driver? @relation(fields: [driverId], references: [id])
+
+  mileage    Int
+  photoUrl   String?       // URL directe vers MediaAsset pour MVP
+  gpsLat     Float?
+  gpsLng     Float?
+  recordedAt DateTime
+  source     MileageSource @default(DRIVER) // Remplace String "DRIVER"
+
+  isValidated   Boolean   @default(false)
+  validatedById String?
+  validatedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("mileage_records")
+  @@index([vehicleId, recordedAt])
+}
+
+// =============================================================================
+// MODÈLE 27 — FUEL TRANSACTION (Suivi carburant)
+// =============================================================================
+// RÈGLE MÉTIER : le véhicule est TOUJOURS remis au chauffeur avec le plein.
+// Chaque remise génère un INITIAL_FULL_TANK. Chaque reprise génère un RETURN_CHECK.
+// Si niveau < FULL au retour → charge possible sur le chauffeur.
+
+model FuelTransaction {
+  id         String    @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+  driverId   String?
+  driver     Driver?   @relation(fields: [driverId], references: [id])
+
+  type      FuelTransactionType
+  fuelLevel FuelLevel           // Niveau constaté (enum — remplace String)
+
+  amount   Decimal? @db.Decimal(12, 2) // Coût si applicable
+  liters   Float?                      // Litres si connu
+
+  photoUrl    String?            // Photo jauge / tableau de bord
+  responsible ChargeResponsible? // Qui supporte le coût d'une différence
+
+  // Lien inspection si événement lors remise/reprise véhicule
+  inspectionId String?
+  inspection   Inspection? @relation(fields: [inspectionId], references: [id])
+
+  recordedById String
+  recordedAt   DateTime
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("fuel_transactions")
+  @@index([vehicleId])
+  @@index([contractId])
+  @@index([type])
+}
+
+// =============================================================================
+// MODÈLE 28 — MEDIA ASSET (Couche de stockage de fichiers centrale)
+// =============================================================================
+// Stocke TOUTES les métadonnées fichier en un seul endroit.
+// Photo et Document sont des wrappers sémantiques qui référencent ce modèle.
+// Évite la duplication de logique fichier (url, hash, gps, timestamp, etc.).
+// Anti-fraude : seule la source IN_APP_CAMERA est acceptée pour les chauffeurs.
+
+model MediaAsset {
+  id           String      @id @default(uuid())
+  fileUrl      String
+  thumbnailUrl String?
+  fileName     String?
+  mimeType     String?
+  fileSize     Int?        // Octets
+
+  mediaType MediaType
+  source    MediaSource @default(IN_APP_CAMERA)
+
+  hash String? // Hash perceptuel SHA256/pHash pour détecter les doublons
+
+  // Métadonnées de capture
+  gpsLat          Float?
+  gpsLng          Float?
+  takenAt         DateTime?
+  serverTimestamp DateTime  @default(now()) // Horodatage serveur (prioritaire sur appareil)
+
+  uploadedById String?
+
+  // Lien polymorphique — entité à laquelle appartient ce média
+  entityType String?
+  entityId   String?
+
+  metadata Json? // Données supplémentaires (EXIF, etc.)
+
+  createdAt DateTime @default(now())
+
+  // Wrappers sémantiques (1:1)
+  photo    Photo?
+  document Document?
+
+  @@map("media_assets")
+  @@index([entityType, entityId])
+  @@index([mediaType])
+  @@index([hash])
+}
+
+// =============================================================================
+// MODÈLE 29 — PHOTO MISSION
+// =============================================================================
+
+model PhotoMission {
+  id        String  @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+  driverId  String
+  driver    Driver  @relation(fields: [driverId], references: [id])
+
+  type   PhotoMissionType
+  status PhotoMissionStatus @default(PENDING)
+
+  dueDate     DateTime
+  completedAt DateTime?
+
+  reminderCount  Int       @default(0)
+  lastReminderAt DateTime?
+
+  incidentId String?
+
+  photos Photo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("photo_missions")
+  @@index([vehicleId, status])
+  @@index([driverId, status])
+  @@index([dueDate])
+}
+
+// =============================================================================
+// MODÈLE 30 — PHOTO (Wrapper sémantique sur MediaAsset)
+// =============================================================================
+// Photo = MediaAsset (métadonnées fichier) + contexte métier (mission, inspection).
+// Source IN_APP_CAMERA obligatoire pour les chauffeurs (vérifiée dans MediaAsset.source).
+
+model Photo {
+  id           String     @id @default(uuid())
+  mediaAssetId String     @unique
+  mediaAsset   MediaAsset @relation(fields: [mediaAssetId], references: [id])
+
+  missionId    String?
+  mission      PhotoMission? @relation(fields: [missionId], references: [id])
+  inspectionId String?
+  inspection   Inspection?   @relation(fields: [inspectionId], references: [id])
+
+  // Contexte de la capture pour classification
+  captureContext String? // DAMAGE, ODOMETER, SCENE, VEHICLE_FRONT, VEHICLE_REAR, TOWING, etc.
+
+  createdAt DateTime @default(now())
+
+  @@map("photos")
+  @@index([missionId])
+  @@index([inspectionId])
+}
+
+// =============================================================================
+// MODÈLE 31 — INSPECTION (Remise & Reprise véhicule)
+// =============================================================================
+// Checklist complète avec double signature obligatoire Manager + Chauffeur.
+// fuelLevel utilise l'enum FuelLevel (remplace String "FULL, 3_4, 1_2…").
+// Items couverts dans InspectionItem : extérieur, intérieur, pneus, roue secours,
+// cric, gilet, triangle, extincteur, clés, papiers, carburant, kilométrage, etc.
+
+model Inspection {
+  id         String           @id @default(uuid())
+  type       InspectionType
+  status     InspectionStatus @default(PENDING_DRIVER)
+
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+  driverId   String?
+  managerId  String?
+  incidentId String?
+
+  gpsLat Float?
+  gpsLng Float?
+
+  // Niveau carburant — enum typé (remplace String libre)
+  fuelLevelIn  FuelLevel?
+  fuelLevelOut FuelLevel?
+
+  mileageIn  Int?
+  mileageOut Int?
+
+  // Double signature obligatoire
+  driverSignedAt  DateTime?
+  managerSignedAt DateTime?
+  driverNotes     String?
+  managerNotes    String?
+
+  items            InspectionItem[]
+  photos           Photo[]
+  fuelTransactions FuelTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("inspections")
+  @@index([vehicleId])
+  @@index([contractId])
+  @@index([type, status])
+}
+
+// =============================================================================
+// MODÈLE 32 — INSPECTION ITEM (Checklist)
+// =============================================================================
+// itemKey normalisé — valeurs recommandées :
+//   exterior, interior, tires, spare_wheel, jack, vest, triangle,
+//   extinguisher, keys, papers, fuel, mileage, engine, battery, lights,
+//   windshield, wipers, horn, mirrors, seat_belts, first_aid_kit
+
+model InspectionItem {
+  id           String     @id @default(uuid())
+  inspectionId String
+  inspection   Inspection @relation(fields: [inspectionId], references: [id])
+
+  itemKey  String               // Clé normalisée
+  label    String               // Label affiché dans l'UI
+  status   InspectionItemStatus @default(OK)
+  comment  String?
+  photoUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("inspection_items")
+  @@index([inspectionId])
+}
+
+// =============================================================================
+// MODÈLE 33 — DOCUMENT (Wrapper sémantique sur MediaAsset)
+// =============================================================================
+// Document = MediaAsset (métadonnées fichier) + validité + versioning + entité liée.
+// Rappels d'expiration : 30j, 15j, 7j, 1j — champs pour éviter les doublons.
+// isCritical = true → notifie l'Admin si expiration, pas seulement les Managers.
+
+model Document {
+  id           String      @id @default(uuid())
+  mediaAssetId String?     @unique
+  mediaAsset   MediaAsset? @relation(fields: [mediaAssetId], references: [id])
+
+  // Lien polymorphique — entité associée au document
+  entityType DocumentEntityType
+  entityId   String
+
+  type  DocumentType
+  title String?
+
+  // Validité
+  validFrom   DateTime?
+  validUntil  DateTime?
+  alwaysValid Boolean        @default(false)
+  status      DocumentStatus @default(VALID)
+
+  // Document critique → l'Admin est notifié en cas d'expiration (pas seulement les Managers)
+  isCritical Boolean @default(false)
+
+  // Suivi des rappels envoyés — évite les doublons lors des cron jobs quotidiens
+  reminder30SentAt DateTime?
+  reminder15SentAt DateTime?
+  reminder7SentAt  DateTime?
+  reminder1SentAt  DateTime?
+
+  // Versioning — parentDocId pointe vers la version précédente
+  version     Int        @default(1)
+  isLatest    Boolean    @default(true)
+  parentDocId String?
+  parentDoc   Document?  @relation("DocVersions", fields: [parentDocId], references: [id])
+  childDocs   Document[] @relation("DocVersions")
+
+  uploadedById String?
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("documents")
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([validUntil])
+  @@index([type])
+  @@index([isLatest])
+}
+
+// =============================================================================
+// MODÈLE 34 — VEHICLE REPOSSESSION
+// =============================================================================
+// Workflow 3 niveaux : Manager propose → Super Manager valide → Admin approuve.
+
+model VehicleRepossession {
+  id         String    @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+  contractId String?   @unique
+  contract   Contract? @relation(fields: [contractId], references: [id])
+
+  status RepossessionStatus @default(PROPOSED)
+
+  reason  String
+  details String?
+
+  proposedById   String
+  proposedAt     DateTime @default(now())
+
+  smValidatedById String?
+  smValidatedAt   DateTime?
+
+  adminApprovedById String?
+  adminApprovedAt   DateTime?
+
+  repossessionDate DateTime?
+
+  postInspectionId String?
+  vehicleCondition String?
+  repairCost       Decimal? @db.Decimal(12, 2)
+
+  closedAt DateTime?
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicle_repossessions")
+  @@index([vehicleId, status])
+}
+
+// =============================================================================
+// MODÈLE 35 — VEHICLE AVAILABILITY EVENT (Calendrier opérationnel)
+// =============================================================================
+// Source de vérité pour expliquer pourquoi un véhicule n'a pas roulé.
+// Alimenté automatiquement par les services Immobilization, SpecialAbsence, etc.
+// Permet de générer des rapports de disponibilité et de justifier les DailyEntry.
+
+model VehicleAvailabilityEvent {
+  id         String    @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id])
+  driverId   String?
+
+  type      VehicleAvailabilityEventType
+  startDate DateTime
+  endDate   DateTime?
+
+  // Entité source qui a déclenché cet événement (polymorphique)
+  sourceEntityType String? // IMMOBILIZATION, INCIDENT, SPECIAL_ABSENCE, MAINTENANCE, etc.
+  sourceEntityId   String?
+
+  createdById String
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicle_availability_events")
+  @@index([vehicleId, startDate])
+  @@index([contractId])
+  @@index([type])
+}
+
+// =============================================================================
+// MODÈLE 36 — TASK (Tâches, Rendez-vous, Rappels)
+// =============================================================================
+
+model Task {
+  id       String               @id @default(uuid())
+  type     TaskType
+  status   TaskStatus           @default(PENDING)
+  priority NotificationPriority @default(NORMAL)
+
+  title       String
+  description String?
+
+  createdById  String
+  createdBy    User    @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  assignedToId String?
+  assignedTo   User?   @relation("TaskAssignedTo", fields: [assignedToId], references: [id])
+
+  relatedEntityType TaskRelatedEntityType? // Remplace String?
+  relatedEntityId   String?
+
+  dueDate     DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tasks")
+  @@index([assignedToId, status])
+  @@index([dueDate])
+  @@index([relatedEntityType, relatedEntityId])
+}
+
+// =============================================================================
+// MODÈLE 37 — NOTIFICATION
+// =============================================================================
+// Règle Admin : seuls les types HIGH et CRITICAL lui parviennent.
+// Vérification dans NotificationService avant tout envoi.
+
+model Notification {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  type     NotificationType     // Remplace String libre
+  title    String
+  message  String
+  priority NotificationPriority @default(NORMAL)
+
+  entityType String?
+  entityId   String?
+
+  sentAt       DateTime?
+  readAt       DateTime?
+  fcmSent      Boolean   @default(false)
+  fcmMessageId String?
+
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+  @@index([userId, readAt])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+// =============================================================================
+// MODÈLE 38 — MONTHLY SETTLEMENT (Relevé mensuel — PARTNER_FLEET)
+// =============================================================================
+
+model MonthlySettlement {
+  id         String   @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+  ownerId    String
+  owner      Owner    @relation(fields: [ownerId], references: [id])
+
+  year  Int
+  month Int // 1 = janvier … 12 = décembre
+
+  // ── Recettes ──
+  totalRevenue Decimal @db.Decimal(12, 2)
+
+  // ── Dépenses par responsable ──
+  driverExpenses   Decimal @db.Decimal(12, 2) @default(0) // Tracées mais n'impactent PAS le bénéfice
+  ownerExpenses    Decimal @db.Decimal(12, 2) @default(0)
+  companyExpenses  Decimal @db.Decimal(12, 2) @default(0)
+  maintenanceCosts Decimal @db.Decimal(12, 2) @default(0)
+  totalExpenses    Decimal @db.Decimal(12, 2) @default(0) // = owner + company + maintenance
+
+  // ── Bénéfice net ──
+  grossProfit Decimal @db.Decimal(12, 2) // = totalRevenue - totalExpenses
+
+  // ── Commission (snapshot contrat au moment de la génération) ──
+  mgmtFeeTypeSnapshot       MgmtFeeType
+  mgmtFeeBaseSnapshot       MgmtFeeBase?
+  mgmtFeePercentageSnapshot Decimal?    @db.Decimal(5, 2)
+  mgmtFeeFixedSnapshot      Decimal?    @db.Decimal(12, 2)
+  managementCommission      Decimal     @db.Decimal(12, 2)
+
+  // ── Montant propriétaire ──
+  ownerAmountDue     Decimal @db.Decimal(12, 2) // = grossProfit - managementCommission
+  ownerAmountPaid    Decimal @db.Decimal(12, 2) @default(0)
+  ownerAmountBalance Decimal @db.Decimal(12, 2) @default(0)
+
+  // ── Workflow ──
+  status SettlementStatus @default(DRAFT)
+
+  generatedById       String?
+  generatedAt         DateTime?
+  approvedById        String?
+  approvedAt          DateTime? // Chiffres figés à partir de ce moment
+  sentToOwnerAt       DateTime?
+  ownerAcknowledgedAt DateTime?
+  disputeNotes        String?
+  notes               String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  revenueLines  SettlementRevenueLine[]
+  expenseLines  SettlementExpenseLine[]
+  ownerPayments OwnerSettlementPayment[]
+
+  @@unique([contractId, year, month])
+  @@map("monthly_settlements")
+  @@index([ownerId, year, month])
+  @@index([vehicleId, year, month])
+  @@index([status])
+}
+
+// =============================================================================
+// MODÈLE 39 — SETTLEMENT REVENUE LINE
+// =============================================================================
+
+model SettlementRevenueLine {
+  id           String            @id @default(uuid())
+  settlementId String
+  settlement   MonthlySettlement @relation(fields: [settlementId], references: [id])
+
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+
+  date        DateTime
+  amount      Decimal  @db.Decimal(12, 2)
+  description String?
+  driverId    String?
+
+  createdAt DateTime @default(now())
+
+  @@map("settlement_revenue_lines")
+  @@index([settlementId])
+}
+
+// =============================================================================
+// MODÈLE 40 — SETTLEMENT EXPENSE LINE
+// =============================================================================
+
+model SettlementExpenseLine {
+  id           String            @id @default(uuid())
+  settlementId String
+  settlement   MonthlySettlement @relation(fields: [settlementId], references: [id])
+
+  chargeId      String?
+  charge        Charge?            @relation(fields: [chargeId], references: [id])
+  maintenanceId String?
+  maintenance   MaintenanceRecord? @relation(fields: [maintenanceId], references: [id])
+
+  date          DateTime
+  amount        Decimal           @db.Decimal(12, 2)
+  category      ChargeType
+  description   String?
+
+  responsible   ChargeResponsible
+  impactsProfit Boolean           @default(true) // False pour les charges chauffeur (suivi pur)
+
+  createdAt DateTime @default(now())
+
+  @@map("settlement_expense_lines")
+  @@index([settlementId])
+}
+
+// =============================================================================
+// MODÈLE 41 — OWNER SETTLEMENT PAYMENT (Versements au propriétaire)
+// =============================================================================
+
+model OwnerSettlementPayment {
+  id           String            @id @default(uuid())
+  settlementId String
+  settlement   MonthlySettlement @relation(fields: [settlementId], references: [id])
+  ownerId      String
+
+  amount        Decimal       @db.Decimal(12, 2)
+  paidAt        DateTime
+  paymentMethod PaymentMethod // Remplace String libre
+  reference     String?
+  notes         String?
+
+  recordedById String?
+  recordedAt   DateTime @default(now())
+
+  @@map("owner_settlement_payments")
+  @@index([settlementId])
+  @@index([ownerId])
+}
+
+// =============================================================================
+// MODÈLE 42 — LEDGER ENTRY (Grand livre financier)
+// =============================================================================
+// Module préparatoire comptabilité — alimenté par tous les services financiers.
+// Chaque mouvement (paiement, charge, caution, relevé…) génère une entrée.
+// Permet de reconstituer l'historique financier complet par entité.
+
+model LedgerEntry {
+  id           String  @id @default(uuid())
+  contractId   String?
+  vehicleId    String?
+  driverId     String?
+  ownerId      String?
+  settlementId String?
+
+  entryType  LedgerEntryType
+  direction  LedgerDirection
+  amount     Decimal         @db.Decimal(12, 2)
+  currency   String          @default("XOF")
+
+  // Source polymorphique — quelle entité a déclenché cette écriture
+  sourceType String? // PAYMENT, CHARGE, DEPOSIT, MAINTENANCE, SETTLEMENT, etc.
+  sourceId   String?
+
+  description  String?
+  recordedById String?
+  occurredAt   DateTime
+
+  createdAt DateTime @default(now())
+
+  @@map("ledger_entries")
+  @@index([contractId])
+  @@index([vehicleId])
+  @@index([ownerId])
+  @@index([entryType])
+  @@index([occurredAt])
+}
+
+// =============================================================================
+// MODÈLE 43 — DRIVER SCORE EVENT
+// =============================================================================
+
+model DriverScoreEvent {
+  id       String @id @default(uuid())
+  driverId String
+  driver   Driver @relation(fields: [driverId], references: [id])
+
+  // Catégorie : PAYMENT, PHOTO_MISSED, ABSENCE, ACCIDENT, FINE, APPOINTMENT_MISSED, COOPERATION
+  category    String
+  impact      Float  // Positif ou négatif
+  reason      String
+  scoreBefore Float
+  scoreAfter  Float
+
+  entityType String?
+  entityId   String?
+
+  createdAt DateTime @default(now())
+
+  @@map("driver_score_events")
+  @@index([driverId, createdAt])
+}
+
+// =============================================================================
+// MODÈLE 44 — VEHICLE SCORE EVENT
+// =============================================================================
+
+model VehicleScoreEvent {
+  id        String  @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id])
+
+  // Catégorie : IMMOBILIZATION, REPAIR_COST, BREAKDOWN, AVAILABILITY, INCIDENT
+  category    String
+  impact      Float
+  reason      String
+  scoreBefore Float
+  scoreAfter  Float
+
+  entityType String?
+  entityId   String?
+
+  createdAt DateTime @default(now())
+
+  @@map("vehicle_score_events")
+  @@index([vehicleId, createdAt])
+}
+
+// =============================================================================
+// MODÈLE 45 — AUDIT LOG
+// =============================================================================
+// Immuable — jamais de soft delete. Toutes les actions sensibles y sont tracées.
+// Actions minimum : CONTRACT_*, CHARGE_*, DEPOSIT_*, REPOSSESSION_*, PAYMENT_*,
+//                   DRIVER_STATUS_CHANGED, VEHICLE_STATUS_CHANGED, PERMISSION_GRANTED.
+
+model AuditLog {
+  id      String @id @default(uuid())
+  actorId String
+  actor   User   @relation("AuditActor", fields: [actorId], references: [id])
+
+  action     String // Identifiant libre — défini comme constante dans le code
+  entityType String
+  entityId   String
+
+  beforeJson Json?
+  afterJson  Json?
+
+  reason    String?
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+}
