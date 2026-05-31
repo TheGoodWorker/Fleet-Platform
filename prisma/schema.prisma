@@ -1,8 +1,9 @@
 // =============================================================================
-// FLEET PLATFORM — PRISMA SCHEMA V2
+// FLEET PLATFORM — PRISMA SCHEMA V3
 // PostgreSQL + NestJS + Prisma 7 ORM
 // Architecture : Modular Monolith
-// 45 modèles · 57 enums
+// 47 modèles · 59 enums
+// Mis à jour : Phase 3-B Architecture Finalization (2026-05-31)
 // =============================================================================
 
 generator client {
@@ -64,6 +65,9 @@ enum PermissionModule {
   MANAGERS
   ANALYTICS
   AUDIT
+  FUEL         // Suivi carburant + kilométrage
+  AVAILABILITY // Calendrier opérationnel — immobilisations, absences spéciales
+  OWNER_PORTAL // Portail propriétaire + versements SIMPLE_RENTAL
 }
 
 // =============================================================================
@@ -95,6 +99,8 @@ enum VehicleAvailabilityEventType {
   REPOSSESSED       // Repris
   OUT_OF_SERVICE    // Hors service
   MAINTENANCE       // Maintenance planifiée
+  BREAKDOWN         // Panne véhicule — déclarée via IncidentsModule
+  APPOINTMENT       // Rendez-vous planifié (garage, expert, bureau, etc.)
 }
 
 // =============================================================================
@@ -150,6 +156,22 @@ enum MgmtFeeType {
 enum MgmtFeeBase {
   NET_PROFIT    // % calculé sur (recettes - dépenses). Défaut recommandé.
   GROSS_REVENUE // % calculé sur les recettes brutes encaissées
+}
+
+// Fréquence de versement au propriétaire (SIMPLE_RENTAL)
+enum OwnerPaymentFrequency {
+  MONTHLY   // Mensuel — versement le 1er du mois
+  WEEKLY    // Hebdomadaire — versement chaque lundi
+  BIWEEKLY  // Bimensuel — versement les 1er et 15 du mois
+  CUSTOM    // Fréquence personnalisée — définie dans le contrat
+}
+
+// Statut d'un versement propriétaire SIMPLE_RENTAL
+enum RentalPaymentStatus {
+  PENDING  // Versement à venir ou en attente
+  PAID     // Versé intégralement
+  LATE     // En retard de versement
+  DISPUTED // Propriétaire conteste le montant
 }
 
 // =============================================================================
@@ -582,6 +604,14 @@ enum NotificationType {
   // ── Propriétaire ──
   OWNER_SETTLEMENT_READY
   OWNER_SETTLEMENT_PAID
+  OWNER_DOCUMENT_EXPIRING_SOON    // Document véhicule / contrat expirant bientôt
+  OWNER_DOCUMENT_EXPIRED          // Document véhicule / contrat expiré
+  OWNER_RENTAL_PAYMENT_RECORDED   // Versement SIMPLE_RENTAL enregistré
+  OWNER_RENTAL_PAYMENT_DUE        // Versement SIMPLE_RENTAL à échéance
+  // ── Accidents & Réparations ──
+  ACCIDENT_STEP_UPDATED           // Étape du dossier accident avancée
+  ACCIDENT_RESOLVED               // Dossier accident clôturé
+  REPAIR_STARTED                  // Véhicule entré en réparation garage
   // ── Admin (HIGH/CRITICAL uniquement) ──
   CRITICAL_ACCIDENT
   FRAUD_ALERT
@@ -690,6 +720,12 @@ model User {
   notifications          Notification[]
   auditLogs              AuditLog[]                 @relation("AuditActor")
   permissionOverrides    UserPermissionOverride[]
+
+  // ── Nouvelles relations Phase 3-B ─────────────────────────────────────────
+  declaredAccidents           AccidentCase[]             @relation("AccidentDeclaredBy")
+  validatedFuelTransactions   FuelTransaction[]          @relation("FuelTransactionValidatedBy")
+  resolvedAvailabilityEvents  VehicleAvailabilityEvent[] @relation("AvailabilityEventResolvedBy")
+  recordedOwnerRentalPayments OwnerRentalPayment[]       @relation("OwnerRentalPaymentRecordedBy")
 
   @@map("users")
   @@index([role])
@@ -893,9 +929,10 @@ model Owner {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  vehicles           Vehicle[]
-  contracts          Contract[]
-  monthlySettlements MonthlySettlement[]
+  vehicles            Vehicle[]
+  contracts           Contract[]
+  monthlySettlements  MonthlySettlement[]
+  ownerRentalPayments OwnerRentalPayment[]
 
   @@map("owners")
   @@index([type])
@@ -1065,6 +1102,11 @@ model Contract {
   mgmtFeePercentage Decimal?     @db.Decimal(5, 2)
   mgmtFeeFixed      Decimal?     @db.Decimal(12, 2)
   mgmtFeeBase       MgmtFeeBase? // Null acceptable si mgmtFeeType = FIXED
+
+  // ── SIMPLE_RENTAL — termes de location propriétaire ────────────────────────
+  vehicleInvestmentCost     Decimal?              @db.Decimal(15, 2) // Coût d'acquisition véhicule (base calcul ROI)
+  simpleRentalMonthlyAmount Decimal?              @db.Decimal(15, 2) // Loyer mensuel fixe versé au propriétaire
+  ownerPaymentFrequency     OwnerPaymentFrequency?                   // Fréquence de versement
   // ───────────────────────────────────────────────────────────────────────────
 
   startDate   DateTime?
@@ -1098,18 +1140,20 @@ model Contract {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  payments           Payment[]
-  dailyEntries       DailyEntry[]
-  charges            Charge[]
-  deposit            Deposit?
-  immobilizations    Immobilization[]
-  inspections        Inspection[]
-  specialAbsences    SpecialAbsence[]
-  driverAssignments  VehicleDriverAssignment[]
-  fuelTransactions   FuelTransaction[]
-  availabilityEvents VehicleAvailabilityEvent[]
-  repossession       VehicleRepossession?
-  monthlySettlements MonthlySettlement[]
+  payments            Payment[]
+  dailyEntries        DailyEntry[]
+  charges             Charge[]
+  deposit             Deposit?
+  immobilizations     Immobilization[]
+  inspections         Inspection[]
+  specialAbsences     SpecialAbsence[]
+  driverAssignments   VehicleDriverAssignment[]
+  fuelTransactions    FuelTransaction[]
+  availabilityEvents  VehicleAvailabilityEvent[]
+  repossession        VehicleRepossession?
+  monthlySettlements  MonthlySettlement[]
+  ownerPortalSettings OwnerPortalVisibilitySettings?
+  ownerRentalPayments OwnerRentalPayment[]
 
   @@map("contracts")
   @@index([status])
@@ -1246,6 +1290,7 @@ model Charge {
   extraDaysAdded Int?
 
   settlementExpenseLines SettlementExpenseLine[]
+  fuelDiscrepancies      FuelTransaction[]        @relation("FuelDiscrepancyCharge")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1500,6 +1545,15 @@ model AccidentCase {
   exitPermitAt          DateTime?
   vehicleReturnedAt     DateTime?
 
+  // Acteur déclarant + données administratives
+  declaredById        String?
+  declaredBy          User?       @relation("AccidentDeclaredBy", fields: [declaredById], references: [id])
+  policeReportNumber  String?     // Numéro de PV de police
+  estimatedRepairDays Int?        // Estimation de la durée de réparation en jours
+  repairDeadline      DateTime?   // Date limite de sortie garage contractuelle
+  insuranceDocumentId String?     // FK vers MediaAsset — constat amiable, PV, etc.
+  insuranceDocument   MediaAsset? @relation("AccidentInsuranceDoc", fields: [insuranceDocumentId], references: [id])
+
   stepHistory AccidentStepHistory[]
   expenses    AccidentExpense[]
 
@@ -1657,6 +1711,15 @@ model FuelTransaction {
   recordedAt   DateTime
   notes        String?
 
+  // R-09 : si niveau < FULL au retour → charge auto créée. Ce champ trace le lien.
+  discrepancyChargeId String?
+  discrepancyCharge   Charge?   @relation("FuelDiscrepancyCharge", fields: [discrepancyChargeId], references: [id])
+
+  // Validation du niveau de carburant déclaré (par Manager ou Super Manager)
+  validatedById String?
+  validatedBy   User?     @relation("FuelTransactionValidatedBy", fields: [validatedById], references: [id])
+  validatedAt   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1706,6 +1769,9 @@ model MediaAsset {
   // Wrappers sémantiques (1:1)
   photo    Photo?
   document Document?
+
+  // Référencé directement par AccidentCase (document assurance/constat)
+  accidentCaseDocs AccidentCase[] @relation("AccidentInsuranceDoc")
 
   @@map("media_assets")
   @@index([entityType, entityId])
@@ -1809,6 +1875,13 @@ model Inspection {
   driverNotes     String?
   managerNotes    String?
 
+  // Lien remise → retour : l'inspection de retour référence l'inspection de remise
+  // pour comparer l'état du véhicule (carburant, kilométrage, items de checklist)
+  linkedHandoverInspectionId String?
+  linkedHandoverInspection    Inspection?  @relation("InspectionReturn", fields: [linkedHandoverInspectionId], references: [id])
+  returnInspection            Inspection?  @relation("InspectionReturn")
+  returnComparisonNotes       String?      // Écarts constatés entre remise et retour
+
   items            InspectionItem[]
   photos           Photo[]
   fuelTransactions FuelTransaction[]
@@ -1881,6 +1954,10 @@ model Document {
   reminder15SentAt DateTime?
   reminder7SentAt  DateTime?
   reminder1SentAt  DateTime?
+
+  // Notification propriétaire (pour les documents véhicule associés à un Owner)
+  notifyOwner      Boolean   @default(false) // Envoyer les rappels d'expiration au propriétaire du véhicule
+  expiryNotifiedAt DateTime?                 // Dernier envoi de notification d'expiration owner
 
   // Versioning — parentDocId pointe vers la version précédente
   version     Int        @default(1)
@@ -1970,6 +2047,11 @@ model VehicleAvailabilityEvent {
 
   createdById String
   notes       String?
+
+  // Résolution de l'indisponibilité (renseigné quand le véhicule reprend du service)
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("AvailabilityEventResolvedBy", fields: [resolvedById], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2307,4 +2389,88 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([action])
   @@index([createdAt])
+}
+
+// =============================================================================
+// MODÈLE 46 — OWNER PORTAL VISIBILITY SETTINGS (Portail propriétaire)
+// =============================================================================
+// Configure ce que le propriétaire peut voir sur son portail, par contrat.
+// SIMPLE_RENTAL : showDailyEntries, showDriverPayments, showCharges, showGrossRevenue
+//                 restent false (l'owner voit son loyer fixe, pas les recettes chauffeur).
+// PARTNER_FLEET : toutes les options peuvent être activées selon accord.
+// D-16 : chaque contrat a ses propres paramètres de visibilité — pas de config globale owner.
+
+model OwnerPortalVisibilitySettings {
+  id         String   @id @default(uuid())
+  contractId String   @unique
+  contract   Contract @relation(fields: [contractId], references: [id])
+
+  // ── Données financières ────────────────────────────────────────────────────
+  showDailyEntries   Boolean @default(false) // Entrées journalières chauffeur
+  showDriverPayments Boolean @default(false) // Paiements reçus du chauffeur
+  showCharges        Boolean @default(false) // Charges additionnelles
+  showGrossRevenue   Boolean @default(false) // Recettes brutes du mois
+
+  // ── Données véhicule & chauffeur ──────────────────────────────────────────
+  showDriverName     Boolean @default(true)  // Nom du chauffeur actif
+  showVehicleDetails Boolean @default(true)  // Marque, modèle, plaque
+  showGps            Boolean @default(false) // Position GPS temps-réel (nécessite Carcul Phase 5)
+
+  // ── Données documentaires & opérationnelles ───────────────────────────────
+  showDocuments   Boolean @default(false) // Documents du véhicule (assurance, CT, etc.)
+  showAccidents   Boolean @default(false) // Dossiers accident en cours
+  showMaintenance Boolean @default(false) // Historique maintenance
+
+  // ── Communications & rentabilité ─────────────────────────────────────────
+  showNotifications Boolean @default(true)  // Notifications envoyées au propriétaire
+  showRoi           Boolean @default(false) // ROI calculé (vehicleInvestmentCost → revenus cumulés)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("owner_portal_visibility_settings")
+}
+
+// =============================================================================
+// MODÈLE 47 — OWNER RENTAL PAYMENT (Versements périodiques SIMPLE_RENTAL)
+// =============================================================================
+// Versements au propriétaire dans le cadre d'un contrat SIMPLE_RENTAL.
+// L'owner ne touche PAS une part des recettes chauffeur — il reçoit un loyer fixe.
+// expectedAmount : montant contractuel dû (Contract.simpleRentalMonthlyAmount).
+// actualAmount   : montant effectivement versé (peut différer en cas d'accord partiel).
+// Contrainte d'unicité : un seul versement par (contrat, année, mois).
+
+model OwnerRentalPayment {
+  id         String   @id @default(uuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+  ownerId    String
+  owner      Owner    @relation(fields: [ownerId], references: [id])
+
+  expectedAmount Decimal             @db.Decimal(15, 2) // Montant contractuel dû
+  actualAmount   Decimal?            @db.Decimal(15, 2) // Montant effectivement versé
+  status         RentalPaymentStatus @default(PENDING)
+
+  periodMonth Int // 1 = janvier … 12 = décembre
+  periodYear  Int
+
+  dueDate DateTime? // Date d'échéance du versement
+  paidAt  DateTime? // Date effective de versement
+
+  paymentMethod PaymentMethod? // Méthode de paiement utilisée
+  reference     String?        // Référence de virement / transaction
+  notes         String?
+
+  recordedById String?
+  recordedBy   User?   @relation("OwnerRentalPaymentRecordedBy", fields: [recordedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contractId, periodYear, periodMonth])
+  @@map("owner_rental_payments")
+  @@index([contractId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([periodYear, periodMonth])
 }

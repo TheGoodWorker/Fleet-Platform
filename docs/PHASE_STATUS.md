@@ -1,9 +1,10 @@
 # Fleet Platform — Phase Status & Progress Tracker
 
 > **Last updated:** 2026-05-31  
-> **Checkpoint:** Phase 3-A.5 complete — awaiting human validation before Phase 3-B  
+> **Checkpoint:** Phase 3-B architecture finalized — schema V3 approved, ready for implementation  
 > **Stack:** NestJS 10 · Prisma 7 · PostgreSQL · TypeScript 5.6 · Decimal.js 10  
-> **Architecture:** Modular Monolith (backend) · Flutter (mobile — not started)
+> **Architecture:** Modular Monolith (backend) · Flutter (mobile — not started)  
+> **Schema:** V3 — 47 models · 59 enums · 2 new models · 3 new enums · 12 new fields
 
 ---
 
@@ -93,6 +94,23 @@
 | `deposits.service.spec.ts` | 11 | Standard deposit; non-standard + Admin notif; ConflictException; partial→PARTIAL; full→PAID + depositPaid on contract; D-13 block; overpayment; R-06 ACTIVE blocked; R-06 COMPLETED allowed |
 | `charges.service.spec.ts` | 5 | PENDING_VALIDATION→VALIDATED; wrong-status guard; 3 extra days created; charge not validated guard; responsible≠DRIVER guard |
 | `contracts.service.spec.ts` | 8 | Successful activation; 7 failure cases (depositPaid, kycValidated, fieldValidated, driver status, vehicle status, wrong contract status, NotFoundException) |
+
+---
+
+### Phase 3-B Architecture Finalization ✅
+
+**Objective:** Gap analysis + schema V3 approval before implementing operational modules. No code written — schema and docs only.
+
+#### Schema V3 changes
+
+| Category | Additions |
+|----------|-----------|
+| **New models** | `OwnerPortalVisibilitySettings` (47 fields) · `OwnerRentalPayment` (expectedAmount / actualAmount / status) |
+| **New enums** | `OwnerPaymentFrequency` (MONTHLY / WEEKLY / BIWEEKLY / CUSTOM) · `RentalPaymentStatus` (PENDING / PAID / LATE / DISPUTED) |
+| **Enum extensions** | `PermissionModule` +3 (FUEL, AVAILABILITY, OWNER_PORTAL) · `VehicleAvailabilityEventType` +2 (BREAKDOWN, APPOINTMENT) · `NotificationType` +7 (ACCIDENT_STEP_UPDATED, ACCIDENT_RESOLVED, REPAIR_STARTED, OWNER_DOCUMENT_EXPIRING_SOON, OWNER_DOCUMENT_EXPIRED, OWNER_RENTAL_PAYMENT_RECORDED, OWNER_RENTAL_PAYMENT_DUE) |
+| **New fields on existing models** | `Contract` +3 (vehicleInvestmentCost, simpleRentalMonthlyAmount, ownerPaymentFrequency) · `Inspection` +3 (linkedHandoverInspectionId, self-relation, returnComparisonNotes) · `AccidentCase` +5 (declaredById, policeReportNumber, estimatedRepairDays, repairDeadline, insuranceDocumentId) · `FuelTransaction` +3 (discrepancyChargeId, validatedById, validatedAt) · `VehicleAvailabilityEvent` +2 (resolvedAt, resolvedById) · `Document` +2 (notifyOwner, expiryNotifiedAt) |
+| **New permissions** | 11 new codes: can_record_fuel, can_validate_mileage, can_manage_immobilization, can_manage_special_absence, can_approve_special_absence, can_configure_owner_visibility, can_view_owner_portal, can_record_owner_payment, can_create_photo_mission, can_validate_photo_mission |
+| **Architecture decisions** | D-16 (OwnerPortalVisibilitySettings per-contract) · D-17 (SIMPLE_RENTAL financial model separate from MonthlySettlement) |
 
 ---
 
@@ -225,13 +243,15 @@ All 8 must pass; any failure throws `BadRequestException` listing all unmet cond
 |-------|-------|
 | `VehicleRepossession` | AuditActions defined, full workflow not implemented |
 | `Contravention` | Traffic fines — always DRIVER-responsible (D-12) |
-| `Immobilization` | Vehicle immobilisation records |
-| `FuelTransaction` | R-08, R-09 defined in ADR but not implemented |
+| `Immobilization` | Vehicle immobilisation records — `can_manage_immobilization` permission ready |
+| `FuelTransaction` | R-08, R-09 defined in ADR — `discrepancyChargeId` FK ready for auto-charge |
 | `MileageRecord` | GPS/odometer — pending Carcul integration |
-| `VehicleAvailabilityEvent` | Availability calendar — fed by multiple services (D-15) |
+| `VehicleAvailabilityEvent` | Availability calendar — fed by multiple services (D-15) · BREAKDOWN + APPOINTMENT enum values now present |
 | `VehicleDriverAssignment` | Assignment history log |
 | `VehicleManagerAssignment` | Manager assignment history |
-| `SpecialAbsence` | Planned driver absences |
+| `SpecialAbsence` | Planned driver absences — `can_manage_special_absence`, `can_approve_special_absence` permissions ready |
+| `OwnerPortalVisibilitySettings` | **NEW** — schema V3 — portail visibility config per contract (D-16) |
+| `OwnerRentalPayment` | **NEW** — schema V3 — SIMPLE_RENTAL fixed rent payments (D-17) |
 
 ---
 
@@ -284,6 +304,8 @@ All 8 must pass; any failure throws `BadRequestException` listing all unmet cond
 | **D-13** | Non-standard deposit requires Admin validation | `isStandardAmount = false` → blocks payment until `adminValidate` called |
 | **D-14** | Document versioning via `parentDocId` + `isLatest` | Never hard-delete a document version |
 | **D-15** | `VehicleAvailabilityEvent` fed by multiple services | `ImmobilizationsService`, `AccidentsService`, `MaintenanceService` all call `AvailabilityService.recordEvent()` |
+| **D-16** | `OwnerPortalVisibilitySettings` per contract, not per owner | One owner can have PARTNER_FLEET + SIMPLE_RENTAL contracts with different visibility rules |
+| **D-17** | `SIMPLE_RENTAL` uses `OwnerRentalPayment`, not `MonthlySettlement` | Owner gets fixed rent — no share of driver revenue. Fields: `vehicleInvestmentCost`, `simpleRentalMonthlyAmount`, `ownerPaymentFrequency` |
 
 ### Open Architecture Arbitrages
 
@@ -294,6 +316,8 @@ All 8 must pass; any failure throws `BadRequestException` listing all unmet cond
 | C | OwnerSettlementPayment.paymentMethod | Add WAVE / ORANGE_MONEY as distinct values? | Before Phase 4 |
 | D | `UserPermissionOverride.expiresAt` | Currently nullable (permanent). Force expiry? | Before Phase 3-B |
 | E | Settlement generation | Manual by Manager vs. auto-cron on 1st of month | Before Phase 4 |
+| I | SIMPLE_RENTAL ROI formula | Gross ROI `(cumRevenue − investmentCost) / investmentCost` vs. net ROI (deducting charges) | Before Phase 4 |
+| J | `OwnerRentalPayment.dueDate` generation | Auto-calculated by cron from `ownerPaymentFrequency` vs. manually set per period | Before Phase 4 |
 
 ---
 
@@ -331,25 +355,30 @@ R-23  Expiry reminders sent once each at 30d, 15d, 7d, 1d
 
 ### Phase 3-B — Operational Modules
 
-> **Gate condition:** Human validation of this Phase 3-A.5 checkpoint.
+> **Gate condition:** Schema V3 approved (✅ done). Implementation can begin.
 
-**Goal:** Build the operational layer used daily by managers in the field — documents, media, inspections, incidents, accidents, maintenance.
+**Goal:** Build the operational layer used daily by managers in the field — documents, media, inspections, fuel, incidents, accidents, maintenance, availability, owner portal.
 
 #### Recommended implementation order
 
 | Priority | Module | Key workflow | Depends on |
 |----------|--------|-------------|-----------|
-| 1 | `DocumentsModule` | Attach docs (PDF, images) to any entity via `(entityType, entityId)` | `MediaModule` |
-| 2 | `MediaModule` | Upload `MediaAsset`, create `Photo` + `PhotoMission` | S3/Supabase env var |
-| 3 | `InspectionsModule` | Create inspection from template, sign (Flutter deeplink), `InspectionItem` per checkpoint | `DocumentsModule` |
-| 4 | `IncidentsModule` | OPEN → IN_PROGRESS → CLOSED; link Driver, Vehicle, Contract | — |
-| 5 | `AccidentsModule` | 14-step workflow (`AccidentStepHistory`), `AccidentExpense` → charge or ledger | `ChargesModule` |
-| 6 | `MaintenanceModule` | Preventive + corrective records, trigger IMMOBILIZED status | `VehicleAvailabilityEvent` |
+| 1 | `MediaModule` | Upload `MediaAsset`, create `Photo` + `PhotoMission` | S3/Supabase env var |
+| 2 | `DocumentsModule` | Attach docs to any entity via `(entityType, entityId)`; expiry cron; `notifyOwner` flag | `MediaModule` |
+| 3 | `InspectionsModule` | Create from template, double-sign, `linkedHandoverInspectionId` for return comparison | `DocumentsModule`, `FuelModule` |
+| 4 | `FuelModule` | R-08 INITIAL_FULL_TANK, R-09 RETURN_CHECK → auto `discrepancyCharge`, `validatedById` | `ChargesModule`, `InspectionsModule` |
+| 5 | `AvailabilityModule` | `VehicleAvailabilityEvent` CRUD; BREAKDOWN + APPOINTMENT types; `resolvedAt` tracking | — |
+| 6 | `ImmobilizationsModule` | Start/end immobilisation → triggers `AvailabilityEvent(IMMOBILIZED)` | `AvailabilityModule` |
+| 7 | `SpecialAbsencesModule` | Driver submits → Manager reviews → SM approves; triggers `AvailabilityEvent(SPECIAL_ABSENCE)` | `AvailabilityModule` |
+| 8 | `IncidentsModule` | OPEN → IN_PROGRESS → CLOSED; BREAKDOWN type → triggers `AvailabilityEvent(BREAKDOWN)` | `AvailabilityModule` |
+| 9 | `AccidentsModule` | 14-step workflow, `declaredById`, `policeReportNumber`, `insuranceDocumentId`, expenses | `ChargesModule`, `IncidentsModule` |
+| 10 | `MaintenanceModule` | Preventive + corrective records, `can_manage_maintenance`, triggers `AvailabilityEvent(MAINTENANCE)` | `AvailabilityModule` |
+| 11 | `OwnerPortalModule` | `OwnerPortalVisibilitySettings` CRUD; `OwnerRentalPayment` for SIMPLE_RENTAL; read-only portal routes | `SettlementsModule` stub |
 
 #### Out of scope for Phase 3-B
 
 - Repossessions (Phase 4)
-- Settlements (Phase 4)
+- Settlements / MonthlySettlement (Phase 4)
 - Scoring formula (Phase 4)
 - Flutter mobile app (Phase 5)
 - GPS / Carcul integration (Phase 5)
@@ -359,14 +388,17 @@ R-23  Expiry reminders sent once each at 30d, 15d, 7d, 1d
 ## Phase Roadmap
 
 ```
-Phase 1      ✅  Foundation & Infrastructure
-Phase 2      ✅  Hardening & Unit Tests
-Phase 3-A    ✅  Financial Core — Payments, DailyEntries, Charges, Deposits
-Phase 3-A.5  ✅  Stabilisation — Completion workflow, KYC integration, Cron
-Phase 3-B    🔲  Operational — Documents, Media, Inspections, Incidents, Accidents, Maintenance
-Phase 4      ❌  Financial Closure — Repossessions, Settlements, Scoring, Analytics
-Phase 5      ❌  Flutter Mobile — Admin app, Manager app, Driver app + GPS/Carcul/Wave
-Phase 6      ❌  Observability — Monitoring, alerting, CI/CD, E2E tests, load testing
+Phase 1        ✅  Foundation & Infrastructure
+Phase 2        ✅  Hardening & Unit Tests
+Phase 3-A      ✅  Financial Core — Payments, DailyEntries, Charges, Deposits
+Phase 3-A.5    ✅  Stabilisation — Completion workflow, KYC integration, Cron
+Phase 3-B arch ✅  Architecture finalized — Schema V3, ERD V3, ADR D-16/D-17
+Phase 3-B      🔲  Operational — Media, Documents, Inspections, Fuel, Availability,
+                   Immobilizations, SpecialAbsences, Incidents, Accidents, Maintenance,
+                   OwnerPortal (11 modules)
+Phase 4        ❌  Financial Closure — Repossessions, Settlements, Scoring, Analytics
+Phase 5        ❌  Flutter Mobile — Admin app, Manager app, Driver app + GPS/Carcul/Wave
+Phase 6        ❌  Observability — Monitoring, alerting, CI/CD, E2E tests, load testing
 ```
 
 ---

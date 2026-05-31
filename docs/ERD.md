@@ -1,5 +1,6 @@
-# ERD Logique & Structure Backend NestJS — V2
-# Fleet Platform · 45 modèles · 57 enums
+# ERD Logique & Structure Backend NestJS — V3
+# Fleet Platform · 47 modèles · 59 enums
+# Mis à jour : Phase 3-B Architecture Finalization (2026-05-31)
 
 ---
 
@@ -136,6 +137,8 @@ erDiagram
         datetime endDate
         string   sourceEntityType
         string   sourceEntityId
+        datetime resolvedAt
+        uuid     resolvedById     FK
     }
 
     %% ═══════════════════════════════════════════════
@@ -143,12 +146,12 @@ erDiagram
     %% ═══════════════════════════════════════════════
 
     Contract {
-        uuid    id              PK
+        uuid    id                        PK
         enum    type
         enum    status
-        uuid    vehicleId       FK
-        uuid    driverId        FK
-        uuid    ownerId         FK
+        uuid    vehicleId                 FK
+        uuid    driverId                  FK
+        uuid    ownerId                   FK
         string  managerId
         decimal dailyAmount
         int     targetDays
@@ -158,14 +161,49 @@ erDiagram
         decimal mgmtFeePercentage
         decimal mgmtFeeFixed
         enum    mgmtFeeBase
+        decimal vehicleInvestmentCost     "SIMPLE_RENTAL: base ROI"
+        decimal simpleRentalMonthlyAmount "SIMPLE_RENTAL: loyer fixe owner"
+        enum    ownerPaymentFrequency     "MONTHLY|WEEKLY|BIWEEKLY|CUSTOM"
         bool    kycValidated
         bool    fieldValidated
         bool    depositPaid
         bool    contractSigned
         bool    adminApproved
-        string  contractNumber  UK
-        uuid    parentContractId FK
+        string  contractNumber            UK
+        uuid    parentContractId          FK
         datetime deletedAt
+    }
+
+    OwnerPortalVisibilitySettings {
+        uuid id              PK
+        uuid contractId      FK "unique"
+        bool showDailyEntries
+        bool showDriverPayments
+        bool showCharges
+        bool showGrossRevenue
+        bool showDriverName
+        bool showVehicleDetails
+        bool showGps
+        bool showDocuments
+        bool showAccidents
+        bool showMaintenance
+        bool showNotifications
+        bool showRoi
+    }
+
+    OwnerRentalPayment {
+        uuid    id             PK
+        uuid    contractId     FK
+        uuid    ownerId        FK
+        decimal expectedAmount
+        decimal actualAmount
+        enum    status         "PENDING|PAID|LATE|DISPUTED"
+        int     periodMonth
+        int     periodYear
+        datetime dueDate
+        datetime paidAt
+        enum    paymentMethod
+        uuid    recordedById   FK
     }
 
     %% ═══════════════════════════════════════════════
@@ -319,17 +357,20 @@ erDiagram
     }
 
     FuelTransaction {
-        uuid    id           PK
-        uuid    vehicleId    FK
-        uuid    contractId   FK
-        uuid    driverId     FK
-        enum    type
-        enum    fuelLevel
-        decimal amount
-        float   liters
-        string  photoUrl
-        enum    responsible
-        uuid    inspectionId FK
+        uuid     id                  PK
+        uuid     vehicleId           FK
+        uuid     contractId          FK
+        uuid     driverId            FK
+        enum     type
+        enum     fuelLevel
+        decimal  amount
+        float    liters
+        string   photoUrl
+        enum     responsible
+        uuid     inspectionId        FK
+        uuid     discrepancyChargeId FK "R-09 auto-charge"
+        uuid     validatedById       FK
+        datetime validatedAt
         datetime recordedAt
     }
 
@@ -359,6 +400,11 @@ erDiagram
         decimal  towingCost
         string   insuranceCompany
         datetime vehicleReturnedAt
+        uuid     declaredById        FK
+        string   policeReportNumber
+        int      estimatedRepairDays
+        datetime repairDeadline
+        uuid     insuranceDocumentId FK "→ MediaAsset"
     }
 
     AccidentStepHistory {
@@ -422,11 +468,11 @@ erDiagram
     }
 
     Inspection {
-        uuid     id             PK
+        uuid     id                          PK
         enum     type
         enum     status
-        uuid     vehicleId      FK
-        uuid     contractId     FK
+        uuid     vehicleId                   FK
+        uuid     contractId                  FK
         string   driverId
         string   managerId
         enum     fuelLevelIn
@@ -435,6 +481,8 @@ erDiagram
         int      mileageOut
         datetime driverSignedAt
         datetime managerSignedAt
+        uuid     linkedHandoverInspectionId  FK "self: RETURN → DELIVERY"
+        string   returnComparisonNotes
     }
 
     InspectionItem {
@@ -639,6 +687,7 @@ erDiagram
     Owner ||--o{ Vehicle                 : "possède"
     Owner ||--o{ Contract                : "contrats"
     Owner ||--o{ MonthlySettlement       : "relevés"
+    Owner ||--o{ OwnerRentalPayment      : "versements_rental"
 
     %% ── Vehicle ─────────────────────────────────
     Vehicle ||--o{ VehicleManagerAssignment  : "historique_managers"
@@ -659,19 +708,21 @@ erDiagram
     Vehicle ||--o{ VehicleAvailabilityEvent  : "calendrier"
 
     %% ── Contract ────────────────────────────────
-    Contract ||--o{ Payment              : "paiements"
-    Contract ||--o{ DailyEntry           : "jours_calendrier"
-    Contract ||--o{ Charge               : "charges"
-    Contract ||--o| Deposit              : "caution"
-    Contract ||--o{ Immobilization       : "immobilisations"
-    Contract ||--o{ Inspection           : "inspections"
-    Contract ||--o{ SpecialAbsence       : "absences"
-    Contract ||--o{ FuelTransaction      : "carburant"
-    Contract ||--o{ VehicleDriverAssignment : "affectations"
-    Contract ||--o{ VehicleAvailabilityEvent : "calendrier"
-    Contract ||--o| VehicleRepossession  : "reprise"
-    Contract ||--o{ MonthlySettlement    : "relevés"
-    Contract }o--o| Contract             : "succession"
+    Contract ||--o{ Payment                       : "paiements"
+    Contract ||--o{ DailyEntry                    : "jours_calendrier"
+    Contract ||--o{ Charge                        : "charges"
+    Contract ||--o| Deposit                       : "caution"
+    Contract ||--o{ Immobilization                : "immobilisations"
+    Contract ||--o{ Inspection                    : "inspections"
+    Contract ||--o{ SpecialAbsence                : "absences"
+    Contract ||--o{ FuelTransaction               : "carburant"
+    Contract ||--o{ VehicleDriverAssignment       : "affectations"
+    Contract ||--o{ VehicleAvailabilityEvent      : "calendrier"
+    Contract ||--o| VehicleRepossession           : "reprise"
+    Contract ||--o{ MonthlySettlement             : "relevés"
+    Contract ||--o| OwnerPortalVisibilitySettings : "portail_owner"
+    Contract ||--o{ OwnerRentalPayment            : "versements_owner"
+    Contract }o--o| Contract                      : "succession"
 
     %% ── Finance ─────────────────────────────────
     Payment ||--o{ DailyEntry            : "couvre"
@@ -680,11 +731,17 @@ erDiagram
     Charge  ||--o{ SettlementExpenseLine : "dans_relevé"
 
     %% ── Incidents & Accidents ───────────────────
-    Incident ||--o| AccidentCase         : "dossier"
-    Incident ||--o{ Charge               : "charges"
-    Incident ||--o{ Immobilization       : "immobilisations"
-    AccidentCase ||--o{ AccidentStepHistory : "étapes"
-    AccidentCase ||--o{ AccidentExpense  : "dépenses"
+    Incident ||--o| AccidentCase              : "dossier"
+    Incident ||--o{ Charge                    : "charges"
+    Incident ||--o{ Immobilization            : "immobilisations"
+    AccidentCase ||--o{ AccidentStepHistory   : "étapes"
+    AccidentCase ||--o{ AccidentExpense       : "dépenses"
+    AccidentCase }o--o| User                  : "déclaré_par"
+    AccidentCase }o--o| MediaAsset            : "doc_assurance"
+
+    %% ── Fuel & Inspection ────────────────────────
+    FuelTransaction }o--o| Charge             : "discrepancy_charge"
+    Inspection }o--o| Inspection              : "retour_vs_remise"
 
     %% ── Médias ──────────────────────────────────
     MediaAsset ||--o| Photo              : "wrapper_photo"

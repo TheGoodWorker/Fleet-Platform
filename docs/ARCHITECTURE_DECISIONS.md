@@ -151,18 +151,46 @@
 
 ---
 
+### D-16 · OwnerPortalVisibilitySettings — configuration par contrat, pas par owner
+
+**Décision** : Les paramètres de visibilité du portail propriétaire sont stockés dans `OwnerPortalVisibilitySettings` lié au **contrat**, pas à l'`Owner`.
+
+**Pourquoi** : Un même propriétaire peut avoir des contrats de types différents (un `PARTNER_FLEET` et un `SIMPLE_RENTAL`). Les droits de visibilité dépendent du type de contrat et des termes négociés individuellement. Une configuration owner-level serait trop grossière et nécessiterait des exceptions pour chaque contrat.
+
+**Règle** : Pour `SIMPLE_RENTAL`, `showDailyEntries`, `showDriverPayments`, `showCharges` et `showGrossRevenue` doivent rester `false` — le propriétaire voit son loyer fixe, pas les recettes chauffeur. Ce n'est pas une contrainte de schéma mais une règle métier validée dans `OwnerPortalService`.
+
+---
+
+### D-17 · SIMPLE_RENTAL — modèle financier owner séparé du flux chauffeur
+
+**Décision** : Le contrat `SIMPLE_RENTAL` utilise `OwnerRentalPayment` (loyer fixe périodique) et **non** `MonthlySettlement` (calcul recettes/dépenses/commission) pour les versements propriétaire.
+
+**Pourquoi** : Dans un `SIMPLE_RENTAL`, la société loue le véhicule à un tiers et reverse au propriétaire un loyer fixe convenu. Le propriétaire n'a aucun intérêt dans les revenus générés par le locataire. Mélanger les deux modèles financiers dans `MonthlySettlement` introduirait des champs inutilisables (mgmtFee, driverExpenses) et une logique conditionnelle complexe.
+
+**Champs clés** :
+- `Contract.vehicleInvestmentCost` — coût d'acquisition du véhicule, base du calcul ROI affiché dans le portail
+- `Contract.simpleRentalMonthlyAmount` — loyer mensuel de référence (peut être proratisé selon `ownerPaymentFrequency`)
+- `Contract.ownerPaymentFrequency` — `MONTHLY | WEEKLY | BIWEEKLY | CUSTOM`
+- `OwnerRentalPayment.expectedAmount` vs `actualAmount` — trace les écarts de versement
+
+**Règle** : `OwnerRentalPaymentService.generate()` calcule `expectedAmount` depuis `simpleRentalMonthlyAmount` proratisé selon la fréquence. Un `OwnerRentalPayment` est créé en `PENDING` à chaque échéance. Il passe en `PAID` quand `actualAmount` est saisi.
+
+---
+
 ## 2. Points encore à arbitrer
 
 | # | Sujet | Options | Impact | Priorité |
 |---|-------|---------|--------|----------|
-| **A** | **Formule de score chauffeur/véhicule** | Définie par événement (poids fixe par catégorie) vs. ML (Ollama local) | Complexité initiale vs. pertinence scores | Avant Phase 3 |
-| **B** | **LedgerEntry — granularité** | Entrée par paiement individuel vs. résumé journalier | Volume table vs. précision comptable | Avant Phase 2 (Payments) |
-| **C** | **OwnerSettlementPayment.paymentMethod** | 4 valeurs actuelles (BANK_TRANSFER, CASH, MOBILE_MONEY, CHECK, OTHER) suffisent-elles ? Ou ajouter WAVE, ORANGE_MONEY comme valeurs distinctes ? | Si intégration Wave/Orange Money en Phase 5, migration enum nécessaire | Avant Phase 2 (Settlements) |
-| **D** | **UserPermissionOverride.expiresAt** | Nullable actuel (permission permanente par défaut) vs. toujours obligatoire avec date lointaine | Sécurité : forcer l'expiration des surcharges ? | Avant Phase 2 (Auth) |
-| **E** | **Audit log — périmètre complet** | Actuel : actions financières et sensibles listées. Élargir à tous les CRUD ? | Volume DB (chaque update = 2 JSON blobs) | Avant Phase 2 |
-| **F** | **MgmtFeeBase sur contrat FIXED** | Quand `mgmtFeeType = FIXED`, le champ `mgmtFeeBase` est sans effet — le rendre nullable selon le type ou garder simple ? | Clarté schema vs. overhead UX | Avant Phase 2 (Settlements) |
-| **G** | **Score — reset mensuel ou cumulatif** | Score cumulatif depuis le début (décision actuelle) vs. reset mensuel pour un "fresh start" | Motivation chauffeur vs. historique long terme | Avant Phase 3 |
-| **H** | **Génération relevé — automatique ou manuelle** | Cron le 1er de chaque mois (génère DRAFT auto) vs. toujours manuelle par Manager | Confort opérationnel vs. contrôle | Avant Phase 2 (Settlements) |
+| **A** | **Formule de score chauffeur/véhicule** | Définie par événement (poids fixe par catégorie) vs. ML (Ollama local) | Complexité initiale vs. pertinence scores | Avant Phase 4 |
+| **B** | **LedgerEntry — granularité** | Entrée par paiement individuel vs. résumé journalier | Volume table vs. précision comptable | Avant Phase 4 |
+| **C** | **OwnerSettlementPayment.paymentMethod** | PaymentMethod enum existant ou valeurs distinctes WAVE/ORANGE_MONEY ? | Si intégration Wave/Orange Money en Phase 5, migration enum nécessaire | Avant Phase 4 (Settlements) |
+| **D** | **UserPermissionOverride.expiresAt** | Nullable actuel (permission permanente par défaut) vs. toujours obligatoire avec date lointaine | Sécurité : forcer l'expiration des surcharges ? | Avant Phase 3-B |
+| **E** | **Audit log — périmètre complet** | Actuel : actions financières et sensibles listées. Élargir à tous les CRUD ? | Volume DB (chaque update = 2 JSON blobs) | Avant Phase 3-B |
+| **F** | **MgmtFeeBase sur contrat FIXED** | Quand `mgmtFeeType = FIXED`, le champ `mgmtFeeBase` est sans effet — le rendre nullable selon le type ou garder simple ? | Clarté schema vs. overhead UX | Avant Phase 4 (Settlements) |
+| **G** | **Score — reset mensuel ou cumulatif** | Score cumulatif depuis le début (décision actuelle) vs. reset mensuel pour un "fresh start" | Motivation chauffeur vs. historique long terme | Avant Phase 4 |
+| **H** | **Génération relevé — automatique ou manuelle** | Cron le 1er de chaque mois (génère DRAFT auto) vs. toujours manuelle par Manager | Confort opérationnel vs. contrôle | Avant Phase 4 (Settlements) |
+| **I** | **SIMPLE_RENTAL ROI formula** | ROI brut `(cumRevenue - investmentCost) / investmentCost` vs. ROI net (déduction charges) | Précision financière vs. lisibilité portail owner | Avant Phase 4 (Owner Portal) |
+| **J** | **OwnerRentalPayment.dueDate automatique** | Calculé par cron depuis `ownerPaymentFrequency` vs. saisi manuellement à chaque période | Automatisation vs. flexibilité opérationnelle | Avant Phase 4 |
 
 ---
 

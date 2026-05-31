@@ -79,6 +79,24 @@ const PERMISSIONS = [
   // AUDIT
   { code: 'can_view_audit_logs', name: 'Voir les logs d\'audit', module: PermissionModule.AUDIT },
   { code: 'can_view_analytics', name: 'Voir les analytics', module: PermissionModule.ANALYTICS },
+
+  // FUEL — Suivi carburant & kilométrage
+  { code: 'can_record_fuel', name: 'Enregistrer transaction carburant', module: PermissionModule.FUEL },
+  { code: 'can_validate_mileage', name: 'Valider le kilométrage déclaré', module: PermissionModule.FUEL },
+
+  // AVAILABILITY — Immobilisations & absences spéciales
+  { code: 'can_manage_immobilization', name: 'Gérer les immobilisations véhicule', module: PermissionModule.AVAILABILITY },
+  { code: 'can_manage_special_absence', name: 'Gérer les absences spéciales chauffeur', module: PermissionModule.AVAILABILITY },
+  { code: 'can_approve_special_absence', name: 'Approuver une absence spéciale (SM)', module: PermissionModule.AVAILABILITY },
+
+  // OWNER_PORTAL — Portail propriétaire & versements SIMPLE_RENTAL
+  { code: 'can_configure_owner_visibility', name: 'Configurer visibilité portail propriétaire', module: PermissionModule.OWNER_PORTAL },
+  { code: 'can_view_owner_portal', name: 'Accéder au portail propriétaire', module: PermissionModule.OWNER_PORTAL },
+  { code: 'can_record_owner_payment', name: 'Enregistrer un versement propriétaire SIMPLE_RENTAL', module: PermissionModule.OWNER_PORTAL },
+
+  // INSPECTIONS (extensions)
+  { code: 'can_create_photo_mission', name: 'Créer une mission photo', module: PermissionModule.INSPECTIONS },
+  { code: 'can_validate_photo_mission', name: 'Valider une mission photo', module: PermissionModule.INSPECTIONS },
 ] as const;
 
 // Permissions accordées par rôle
@@ -102,6 +120,14 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'can_manage_managers',
     'can_view_audit_logs',
     'can_view_analytics',
+    // FUEL
+    'can_record_fuel', 'can_validate_mileage',
+    // AVAILABILITY
+    'can_manage_immobilization', 'can_manage_special_absence', 'can_approve_special_absence',
+    // OWNER_PORTAL
+    'can_configure_owner_visibility', 'can_view_owner_portal', 'can_record_owner_payment',
+    // INSPECTIONS extensions
+    'can_create_photo_mission', 'can_validate_photo_mission',
   ],
 
   MANAGER: [
@@ -115,6 +141,14 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'can_manage_maintenance',
     'can_create_inspection', 'can_sign_inspection',
     'can_propose_repossession',
+    // FUEL
+    'can_record_fuel',
+    // AVAILABILITY
+    'can_manage_immobilization', 'can_manage_special_absence',
+    // OWNER_PORTAL (lecture seule — voir les véhicules de sa flotte)
+    'can_view_owner_portal',
+    // INSPECTIONS extensions
+    'can_create_photo_mission',
   ],
 
   DRIVER: [
