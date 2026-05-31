@@ -1,8 +1,246 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable, Logger, NotFoundException, BadRequestException,
+} from '@nestjs/common';
+import {
+  IncidentStatus, IncidentSeverity, NotificationType, NotificationPriority, User,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { AuditActions } from '../../common/constants/audit-actions';
+import { EntityTypes } from '../../common/constants/entity-types';
+import {
+  CreateIncidentDto, UpdateIncidentDto, ResolveIncidentDto, IncidentFiltersDto,
+} from './dto/incident.dto';
+
+const INCIDENT_INCLUDE = {
+  vehicle: { select: { id: true, plateNumber: true, brand: true, model: true } },
+  driver: { select: { id: true, userId: true } },
+  accidentCase: {
+    select: {
+      id: true,
+      currentStep: true,
+      status: true,
+      insuranceFileNumber: true,
+    },
+  },
+  charges: { select: { id: true, type: true, amount: true, status: true } },
+  immobilizations: { select: { id: true, startDate: true, endDate: true, reason: true } },
+};
 
 @Injectable()
-export class incidentsService {
-  constructor(private prisma: PrismaService) {}
-  // TODO Phase 3+: Implémenter la logique métier incidents
+export class IncidentsService {
+  private readonly logger = new Logger(IncidentsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+    private notificationsService: NotificationsService,
+  ) {}
+
+  // ─── Lecture ───────────────────────────────────────────────────────────────
+
+  async findAll(filters: IncidentFiltersDto, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const where: any = {};
+    if (filters.vehicleId) where.vehicleId = filters.vehicleId;
+    if (filters.driverId) where.driverId = filters.driverId;
+    if (filters.type) where.type = filters.type;
+    if (filters.status) where.status = filters.status;
+    if (filters.severity) where.severity = filters.severity;
+
+    const [data, total] = await Promise.all([
+      this.prisma.incident.findMany({
+        where, skip, take: limit,
+        include: INCIDENT_INCLUDE,
+        orderBy: { occurredAt: 'desc' },
+      }),
+      this.prisma.incident.count({ where }),
+    ]);
+    return { data, meta: { page, limit, total } };
+  }
+
+  async findById(id: string) {
+    const incident = await this.prisma.incident.findFirst({
+      where: { id },
+      include: INCIDENT_INCLUDE,
+    });
+    if (!incident) throw new NotFoundException(`Incident ${id} introuvable`);
+    return incident;
+  }
+
+  // ─── Création ──────────────────────────────────────────────────────────────
+
+  async create(dto: CreateIncidentDto, actor: User) {
+    const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
+    if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+
+    const incident = await this.prisma.incident.create({
+      data: {
+        type: dto.type,
+        severity: dto.severity ?? IncidentSeverity.MEDIUM,
+        vehicleId: dto.vehicleId,
+        driverId: dto.driverId ?? null,
+        managerId: dto.managerId ?? null,
+        description: dto.description,
+        notes: dto.notes ?? null,
+        locationLat: dto.locationLat ?? null,
+        locationLng: dto.locationLng ?? null,
+        occurredAt: new Date(dto.occurredAt),
+      },
+      include: INCIDENT_INCLUDE,
+    });
+
+    this.auditService
+      .log({
+        actorId: actor.id,
+        action: AuditActions.INCIDENT_CREATED,
+        entityType: EntityTypes.INCIDENT,
+        entityId: incident.id,
+        afterJson: { type: dto.type, severity: incident.severity, vehicleId: dto.vehicleId },
+      })
+      .catch(() => {});
+
+    // Notifier le manager responsable si spécifié
+    if (dto.managerId) {
+      const notifType = dto.type === 'ACCIDENT'
+        ? NotificationType.ACCIDENT_DECLARED
+        : NotificationType.BREAKDOWN_DECLARED;
+
+      this.notificationsService
+        .send({
+          userId: dto.managerId,
+          type: notifType,
+          title: `Nouvel incident ${dto.type}`,
+          message: `Un incident ${dto.type} a été signalé pour le véhicule ${vehicle.plateNumber ?? dto.vehicleId}.`,
+          priority: dto.severity === IncidentSeverity.CRITICAL
+            ? NotificationPriority.HIGH
+            : NotificationPriority.NORMAL,
+          entityType: EntityTypes.INCIDENT,
+          entityId: incident.id,
+        })
+        .catch(() => {});
+    }
+
+    return this.findById(incident.id);
+  }
+
+  // ─── Mise à jour ───────────────────────────────────────────────────────────
+
+  async update(id: string, dto: UpdateIncidentDto, actor: User) {
+    const incident = await this.prisma.incident.findFirst({ where: { id } });
+    if (!incident) throw new NotFoundException('Incident introuvable');
+    if (incident.status === IncidentStatus.CLOSED) {
+      throw new BadRequestException('Impossible de modifier un incident clôturé');
+    }
+
+    return this.prisma.incident.update({
+      where: { id },
+      data: {
+        severity: dto.severity ?? undefined,
+        notes: dto.notes ?? undefined,
+        managerId: dto.managerId ?? undefined,
+      },
+      include: INCIDENT_INCLUDE,
+    });
+  }
+
+  // ─── Cycle de vie ──────────────────────────────────────────────────────────
+
+  async markInProgress(id: string, actor: User) {
+    const incident = await this.prisma.incident.findFirst({ where: { id } });
+    if (!incident) throw new NotFoundException('Incident introuvable');
+    if (incident.status !== IncidentStatus.OPEN) {
+      throw new BadRequestException(
+        `Incident ${incident.status} — transition vers IN_PROGRESS impossible`,
+      );
+    }
+
+    return this.prisma.incident.update({
+      where: { id },
+      data: { status: IncidentStatus.IN_PROGRESS },
+      include: INCIDENT_INCLUDE,
+    });
+  }
+
+  async resolve(id: string, dto: ResolveIncidentDto, actor: User) {
+    const incident = await this.prisma.incident.findFirst({ where: { id } });
+    if (!incident) throw new NotFoundException('Incident introuvable');
+
+    const allowedStatuses: IncidentStatus[] = [IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS];
+    if (!allowedStatuses.includes(incident.status)) {
+      throw new BadRequestException(
+        `Incident ${incident.status} — résolution impossible`,
+      );
+    }
+
+    const notes = dto.notes
+      ? (incident.notes ? `${incident.notes}\n${dto.notes}` : dto.notes)
+      : undefined;
+
+    const updated = await this.prisma.incident.update({
+      where: { id },
+      data: {
+        status: IncidentStatus.RESOLVED,
+        resolvedAt: new Date(),
+        ...(notes !== undefined && { notes }),
+      },
+      include: INCIDENT_INCLUDE,
+    });
+
+    this.auditService
+      .log({
+        actorId: actor.id,
+        action: AuditActions.INCIDENT_RESOLVED,
+        entityType: EntityTypes.INCIDENT,
+        entityId: id,
+        afterJson: { status: IncidentStatus.RESOLVED },
+      })
+      .catch(() => {});
+
+    // Notifier le manager responsable
+    if (incident.managerId) {
+      this.notificationsService
+        .send({
+          userId: incident.managerId,
+          type: NotificationType.BREAKDOWN_DECLARED,
+          title: 'Incident résolu',
+          message: `L'incident ${incident.type} sur le véhicule ${incident.vehicleId} a été marqué comme résolu.`,
+          priority: NotificationPriority.NORMAL,
+          entityType: EntityTypes.INCIDENT,
+          entityId: id,
+        })
+        .catch(() => {});
+    }
+
+    return updated;
+  }
+
+  async close(id: string, actor: User) {
+    const incident = await this.prisma.incident.findFirst({ where: { id } });
+    if (!incident) throw new NotFoundException('Incident introuvable');
+    if (incident.status !== IncidentStatus.RESOLVED) {
+      throw new BadRequestException(
+        `L'incident doit être RESOLVED avant d'être clôturé — statut actuel: ${incident.status}`,
+      );
+    }
+
+    const updated = await this.prisma.incident.update({
+      where: { id },
+      data: { status: IncidentStatus.CLOSED },
+      include: INCIDENT_INCLUDE,
+    });
+
+    this.auditService
+      .log({
+        actorId: actor.id,
+        action: AuditActions.INCIDENT_CLOSED,
+        entityType: EntityTypes.INCIDENT,
+        entityId: id,
+        afterJson: { status: IncidentStatus.CLOSED },
+      })
+      .catch(() => {});
+
+    return updated;
+  }
 }

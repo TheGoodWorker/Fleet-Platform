@@ -1,15 +1,129 @@
-import { Controller, Get } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { mediaService } from './media.service';
+import {
+  Controller, Get, Post, Param, Query, Body,
+  UseInterceptors, UploadedFile,
+  ParseIntPipe, DefaultValuePipe, HttpCode, HttpStatus,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes,
+  ApiBody, ApiQuery,
+} from '@nestjs/swagger';
+import { UserRole, User } from '@prisma/client';
+import { MediaService } from './media.service';
+import {
+  UploadMediaDto, CreatePhotoDto, CreatePhotoMissionDto,
+  SubmitPhotoMissionDto, MediaFiltersDto, PhotoMissionFiltersDto,
+} from './dto/media.dto';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Perm } from '../../common/constants/permissions';
 
 @ApiTags('media')
 @ApiBearerAuth('JWT')
 @Controller('media')
-export class mediaController {
-  constructor(private readonly service: mediaService) {}
+export class MediaController {
+  constructor(private readonly service: MediaService) {}
 
-  @Get('health')
-  health() {
-    return { module: 'media', status: 'ready', phase: 'Phase 3+' };
+  // ─── MediaAsset upload ────────────────────────────────────────────────────
+
+  @Post('upload')
+  @Roles(UserRole.DRIVER)
+  @ApiOperation({ summary: 'Upload un fichier — crée un MediaAsset' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ description: 'Fichier multipart + métadonnées JSON' })
+  @UseInterceptors(FileInterceptor('file', { storage: undefined })) // buffer mode
+  upload(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: UploadMediaDto,
+    @CurrentUser() actor: User,
+  ) {
+    return this.service.upload(file, dto, actor);
+  }
+
+  @Get(':id/url')
+  @Roles(UserRole.DRIVER)
+  @ApiOperation({ summary: 'Obtenir l\'URL (signée) d\'un MediaAsset' })
+  getSignedUrl(@Param('id') id: string) {
+    return this.service.getSignedUrl(id);
+  }
+
+  @Get(':id')
+  @Roles(UserRole.DRIVER)
+  @ApiOperation({ summary: 'Détail d\'un MediaAsset' })
+  findById(@Param('id') id: string) {
+    return this.service.findById(id);
+  }
+
+  @Get()
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Lister les MediaAssets (filtrés par entité)' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  findAll(
+    @Query() filters: MediaFiltersDto,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.service.findAll(filters, page, limit);
+  }
+
+  // ─── Photo wrapper ────────────────────────────────────────────────────────
+
+  @Post('photos')
+  @Roles(UserRole.DRIVER)
+  @ApiOperation({ summary: 'Créer un wrapper Photo depuis un MediaAsset' })
+  createPhoto(@Body() dto: CreatePhotoDto, @CurrentUser() actor: User) {
+    return this.service.createPhoto(dto, actor);
+  }
+
+  // ─── Photo Mission ────────────────────────────────────────────────────────
+
+  @Post('photo-missions')
+  @Roles(UserRole.MANAGER)
+  @RequirePermission(Perm.CREATE_PHOTO_MISSION)
+  @ApiOperation({ summary: 'Créer une mission photo pour un chauffeur' })
+  createPhotoMission(@Body() dto: CreatePhotoMissionDto, @CurrentUser() actor: User) {
+    return this.service.createPhotoMission(dto, actor);
+  }
+
+  @Get('photo-missions')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Lister les missions photo' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  findPhotoMissions(
+    @Query() filters: PhotoMissionFiltersDto,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.service.findPhotoMissions(filters, page, limit);
+  }
+
+  @Get('photo-missions/:id')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Détail d\'une mission photo' })
+  findPhotoMissionById(@Param('id') id: string) {
+    return this.service.findPhotoMissionById(id);
+  }
+
+  @Post('photo-missions/:id/submit')
+  @Roles(UserRole.DRIVER)
+  @ApiOperation({ summary: 'Soumettre une mission photo (chauffeur)' })
+  submitPhotoMission(
+    @Param('id') id: string,
+    @Body() dto: SubmitPhotoMissionDto,
+    @CurrentUser() actor: User,
+  ) {
+    return this.service.submitPhotoMission(id, dto, actor);
+  }
+
+  @Post('photo-missions/:id/validate')
+  @Roles(UserRole.MANAGER)
+  @RequirePermission(Perm.VALIDATE_PHOTO_MISSION)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Valider une mission photo soumise' })
+  validatePhotoMission(@Param('id') id: string, @CurrentUser() actor: User) {
+    return this.service.validatePhotoMission(id, actor);
   }
 }

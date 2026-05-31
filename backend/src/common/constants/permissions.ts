@@ -76,6 +76,24 @@ export const Perm = {
   // Audit et analytique
   VIEW_AUDIT_LOGS: 'can_view_audit_logs',
   VIEW_ANALYTICS: 'can_view_analytics',
+
+  // Carburant & kilométrage (Phase 3-B)
+  RECORD_FUEL: 'can_record_fuel',
+  VALIDATE_MILEAGE: 'can_validate_mileage',
+
+  // Disponibilité — immobilisations & absences spéciales (Phase 3-B)
+  MANAGE_IMMOBILIZATION: 'can_manage_immobilization',
+  MANAGE_SPECIAL_ABSENCE: 'can_manage_special_absence',
+  APPROVE_SPECIAL_ABSENCE: 'can_approve_special_absence',
+
+  // Portail propriétaire (Phase 3-B)
+  CONFIGURE_OWNER_VISIBILITY: 'can_configure_owner_visibility',
+  VIEW_OWNER_PORTAL: 'can_view_owner_portal',
+  RECORD_OWNER_PAYMENT: 'can_record_owner_payment',
+
+  // Missions photo (Phase 3-B)
+  CREATE_PHOTO_MISSION: 'can_create_photo_mission',
+  VALIDATE_PHOTO_MISSION: 'can_validate_photo_mission',
 } as const;
 
 export type PermissionCode = (typeof Perm)[keyof typeof Perm];

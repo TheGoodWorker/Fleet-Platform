@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
-import { documentsController } from './documents.controller';
-import { documentsService } from './documents.service';
+import { DocumentsController } from './documents.controller';
+import { DocumentsService } from './documents.service';
+import { DocumentExpiryService } from './document-expiry.service';
+import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  controllers: [documentsController],
-  providers: [documentsService],
-  exports: [documentsService],
+  imports: [AuditModule, NotificationsModule],
+  controllers: [DocumentsController],
+  providers: [DocumentsService, DocumentExpiryService],
+  exports: [DocumentsService],
 })
-export class documentsModule {}
+export class DocumentsModule {}

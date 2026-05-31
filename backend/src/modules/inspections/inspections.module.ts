@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
-import { inspectionsController } from './inspections.controller';
-import { inspectionsService } from './inspections.service';
+import { InspectionsController } from './inspections.controller';
+import { InspectionsService } from './inspections.service';
+import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  controllers: [inspectionsController],
-  providers: [inspectionsService],
-  exports: [inspectionsService],
+  imports: [AuditModule, NotificationsModule],
+  controllers: [InspectionsController],
+  providers: [InspectionsService],
+  exports: [InspectionsService],
 })
-export class inspectionsModule {}
+export class InspectionsModule {}

@@ -1,8 +1,417 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable, Logger, NotFoundException, BadRequestException,
+} from '@nestjs/common';
+import {
+  AccidentStep, AccidentCaseStatus, NotificationType, NotificationPriority,
+  User, ChargeResponsible,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { AuditActions } from '../../common/constants/audit-actions';
+import { EntityTypes } from '../../common/constants/entity-types';
+import {
+  CreateAccidentCaseDto, AdvanceStepDto, AddExpenseDto,
+  ValidateExpenseDto, CloseAccidentCaseDto, AccidentFiltersDto,
+} from './dto/accident.dto';
+
+/**
+ * Ordre strict des 14 étapes du workflow accident.
+ * Une étape ne peut être validée qu'en respectant la progression linéaire.
+ */
+const STEP_ORDER: Record<AccidentStep, number> = {
+  DECLARED: 0,
+  PHOTOS_RECEIVED: 1,
+  MANAGER_ARRIVED: 2,
+  TOWING_REQUESTED: 3,
+  VEHICLE_TOWED: 4,
+  INSURANCE_DECLARED: 5,
+  EXPERT_VISITED: 6,
+  REPAIR_QUOTE_RECEIVED: 7,
+  GARAGE_STARTED: 8,
+  REPAIR_IN_PROGRESS: 9,
+  REPAIR_COMPLETED: 10,
+  EXPERT_VALIDATION: 11,
+  EXIT_PERMIT_RECEIVED: 12,
+  VEHICLE_RETURNED: 13,
+};
+
+/** Map étape → champ timestamp correspondant sur AccidentCase */
+const STEP_TIMESTAMP_FIELD: Partial<Record<AccidentStep, string>> = {
+  DECLARED: 'declaredAt',
+  PHOTOS_RECEIVED: 'photosReceivedAt',
+  MANAGER_ARRIVED: 'managerArrivedAt',
+  TOWING_REQUESTED: 'towingRequestedAt',
+  VEHICLE_TOWED: 'vehicleTowedAt',
+  INSURANCE_DECLARED: 'insuranceDeclaredAt',
+  EXPERT_VISITED: 'expertVisitedAt',
+  REPAIR_QUOTE_RECEIVED: 'repairQuoteReceivedAt',
+  GARAGE_STARTED: 'garageStartedAt',
+  REPAIR_IN_PROGRESS: 'garageStartedAt',    // réutilise garageStartedAt
+  REPAIR_COMPLETED: 'repairCompletedAt',
+  EXPERT_VALIDATION: 'expertValidationAt',
+  EXIT_PERMIT_RECEIVED: 'exitPermitAt',
+  VEHICLE_RETURNED: 'vehicleReturnedAt',
+};
+
+const ACCIDENT_INCLUDE = {
+  incident: {
+    select: {
+      id: true,
+      type: true,
+      vehicleId: true,
+      driverId: true,
+      managerId: true,
+      severity: true,
+      vehicle: { select: { id: true, plateNumber: true, brand: true, model: true } },
+    },
+  },
+  declaredBy: { select: { id: true, firstName: true, lastName: true } },
+  insuranceDocument: { select: { id: true, fileUrl: true, mediaType: true } },
+  stepHistory: { orderBy: { completedAt: 'asc' as const } },
+  expenses: { orderBy: { createdAt: 'desc' as const } },
+};
 
 @Injectable()
-export class accidentsService {
-  constructor(private prisma: PrismaService) {}
-  // TODO Phase 3+: Implémenter la logique métier accidents
+export class AccidentsService {
+  private readonly logger = new Logger(AccidentsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+    private notificationsService: NotificationsService,
+  ) {}
+
+  // ─── Lecture ───────────────────────────────────────────────────────────────
+
+  async findAll(filters: AccidentFiltersDto, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const where: any = {};
+    if (filters.vehicleId) {
+      where.incident = { vehicleId: filters.vehicleId };
+    }
+    if (filters.status) where.status = filters.status;
+    if (filters.currentStep) where.currentStep = filters.currentStep;
+
+    const [data, total] = await Promise.all([
+      this.prisma.accidentCase.findMany({
+        where, skip, take: limit,
+        include: ACCIDENT_INCLUDE,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.accidentCase.count({ where }),
+    ]);
+    return { data, meta: { page, limit, total } };
+  }
+
+  async findById(id: string) {
+    const accident = await this.prisma.accidentCase.findFirst({
+      where: { id },
+      include: ACCIDENT_INCLUDE,
+    });
+    if (!accident) throw new NotFoundException(`Dossier accident ${id} introuvable`);
+    return accident;
+  }
+
+  async findByIncident(incidentId: string) {
+    const accident = await this.prisma.accidentCase.findFirst({
+      where: { incidentId },
+      include: ACCIDENT_INCLUDE,
+    });
+    if (!accident) throw new NotFoundException(`Pas de dossier accident pour l'incident ${incidentId}`);
+    return accident;
+  }
+
+  // ─── Création ──────────────────────────────────────────────────────────────
+
+  async create(dto: CreateAccidentCaseDto, actor: User) {
+    // Vérifier que l'incident existe et est de type ACCIDENT
+    const incident = await this.prisma.incident.findFirst({
+      where: { id: dto.incidentId },
+    });
+    if (!incident) throw new NotFoundException('Incident introuvable');
+    if (incident.type !== 'ACCIDENT') {
+      throw new BadRequestException(
+        `Seul un incident de type ACCIDENT peut générer un dossier accident — type actuel: ${incident.type}`,
+      );
+    }
+
+    // Vérifier qu'un dossier n'existe pas déjà
+    const existing = await this.prisma.accidentCase.findFirst({
+      where: { incidentId: dto.incidentId },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `Un dossier accident existe déjà pour cet incident (id: ${existing.id})`,
+      );
+    }
+
+    const now = new Date();
+
+    const accidentCase = await this.prisma.accidentCase.create({
+      data: {
+        incidentId: dto.incidentId,
+        currentStep: AccidentStep.DECLARED,
+        status: AccidentCaseStatus.OPEN,
+        declaredById: dto.declaredById ?? actor.id,
+        policeReportNumber: dto.policeReportNumber ?? null,
+        insuranceCompany: dto.insuranceCompany ?? null,
+        insuranceFileNumber: dto.insuranceFileNumber ?? null,
+        insuranceDocumentId: dto.insuranceDocumentId ?? null,
+        estimatedRepairDays: dto.estimatedRepairDays ?? null,
+        repairDeadline: dto.repairDeadline ? new Date(dto.repairDeadline) : null,
+        declaredAt: now,
+      },
+      include: ACCIDENT_INCLUDE,
+    });
+
+    // Historique de la première étape
+    await this.prisma.accidentStepHistory.create({
+      data: {
+        accidentCaseId: accidentCase.id,
+        step: AccidentStep.DECLARED,
+        completedAt: now,
+        completedById: actor.id,
+        notes: 'Dossier accident ouvert',
+      },
+    });
+
+    this.auditService
+      .log({
+        actorId: actor.id,
+        action: AuditActions.ACCIDENT_DECLARED,
+        entityType: EntityTypes.ACCIDENT_CASE,
+        entityId: accidentCase.id,
+        afterJson: { incidentId: dto.incidentId, step: AccidentStep.DECLARED },
+      })
+      .catch(() => {});
+
+    // Notifier le manager de l'incident
+    if (incident.managerId) {
+      this.notificationsService
+        .send({
+          userId: incident.managerId,
+          type: NotificationType.ACCIDENT_STEP_UPDATED,
+          title: 'Dossier accident ouvert',
+          message: `Un dossier accident a été créé pour l'incident sur le véhicule ${incident.vehicleId}.`,
+          priority: NotificationPriority.HIGH,
+          entityType: EntityTypes.ACCIDENT_CASE,
+          entityId: accidentCase.id,
+        })
+        .catch(() => {});
+    }
+
+    return this.findById(accidentCase.id);
+  }
+
+  // ─── Avancement d'étape ────────────────────────────────────────────────────
+
+  async advanceStep(id: string, dto: AdvanceStepDto, actor: User) {
+    const accidentCase = await this.prisma.accidentCase.findFirst({ where: { id } });
+    if (!accidentCase) throw new NotFoundException('Dossier accident introuvable');
+    if (accidentCase.status !== AccidentCaseStatus.OPEN) {
+      throw new BadRequestException(
+        `Dossier accident ${accidentCase.status} — avancement d'étape impossible`,
+      );
+    }
+
+    const currentOrder = STEP_ORDER[accidentCase.currentStep];
+    const newOrder = STEP_ORDER[dto.step];
+
+    // L'étape doit progresser (pas reculer, pas rester identique)
+    if (newOrder <= currentOrder) {
+      throw new BadRequestException(
+        `L'étape ${dto.step} (ordre ${newOrder}) ne peut pas succéder à ${accidentCase.currentStep} (ordre ${currentOrder})`,
+      );
+    }
+
+    const now = new Date();
+    const timestampField = STEP_TIMESTAMP_FIELD[dto.step];
+
+    // Données de mise à jour spécifiques à certaines étapes
+    const stepData: any = {
+      currentStep: dto.step,
+      ...(timestampField && { [timestampField]: now }),
+    };
+
+    // Étapes towing
+    if (dto.step === AccidentStep.TOWING_REQUESTED && dto.towingCompany) {
+      stepData.towingCompany = dto.towingCompany;
+    }
+    if (dto.step === AccidentStep.VEHICLE_TOWED) {
+      if (dto.towingCost !== undefined) stepData.towingCost = dto.towingCost;
+      if (dto.towingPlateVisible !== undefined) stepData.towingPlateVisible = dto.towingPlateVisible;
+      if (dto.towingPhotoUrl) stepData.towingPhotoUrl = dto.towingPhotoUrl;
+    }
+
+    const updated = await this.prisma.accidentCase.update({
+      where: { id },
+      data: stepData,
+      include: ACCIDENT_INCLUDE,
+    });
+
+    // Historique
+    await this.prisma.accidentStepHistory.create({
+      data: {
+        accidentCaseId: id,
+        step: dto.step,
+        completedAt: now,
+        completedById: actor.id,
+        notes: dto.notes ?? null,
+        documentUrl: dto.documentUrl ?? null,
+      },
+    });
+
+    this.auditService
+      .log({
+        actorId: actor.id,
+        action: AuditActions.ACCIDENT_STEP_ADVANCED,
+        entityType: EntityTypes.ACCIDENT_CASE,
+        entityId: id,
+        afterJson: { step: dto.step, previousStep: accidentCase.currentStep },
+      })
+      .catch(() => {});
+
+    // Notification au manager si étapes clés
+    const keySteps: AccidentStep[] = [
+      AccidentStep.REPAIR_COMPLETED,
+      AccidentStep.VEHICLE_RETURNED,
+    ];
+
+    if (updated.incident?.managerId && keySteps.includes(dto.step)) {
+      this.notificationsService
+        .send({
+          userId: updated.incident.managerId,
+          type: NotificationType.ACCIDENT_STEP_UPDATED,
+          title: `Accident — étape ${dto.step}`,
+          message: `L'étape "${dto.step}" du dossier accident a été validée.`,
+          priority: dto.step === AccidentStep.VEHICLE_RETURNED
+            ? NotificationPriority.HIGH
+            : NotificationPriority.NORMAL,
+          entityType: EntityTypes.ACCIDENT_CASE,
+          entityId: id,
+        })
+        .catch(() => {});
+    }
+
+    return updated;
+  }
+
+  // ─── Dépenses ──────────────────────────────────────────────────────────────
+
+  async addExpense(id: string, dto: AddExpenseDto, actor: User) {
+    const accidentCase = await this.prisma.accidentCase.findFirst({ where: { id } });
+    if (!accidentCase) throw new NotFoundException('Dossier accident introuvable');
+    if (accidentCase.status !== AccidentCaseStatus.OPEN) {
+      throw new BadRequestException('Impossible d\'ajouter une dépense sur un dossier clôturé');
+    }
+
+    return this.prisma.accidentExpense.create({
+      data: {
+        accidentCaseId: id,
+        type: dto.type,
+        amount: dto.amount,
+        description: dto.description ?? null,
+        responsible: dto.responsible ?? null,
+        documentUrl: dto.documentUrl ?? null,
+      },
+    });
+  }
+
+  async validateExpense(id: string, expenseId: string, dto: ValidateExpenseDto, actor: User) {
+    const expense = await this.prisma.accidentExpense.findFirst({
+      where: { id: expenseId, accidentCaseId: id },
+    });
+    if (!expense) throw new NotFoundException('Dépense introuvable');
+    if (expense.validatedAt) {
+      throw new BadRequestException('Cette dépense a déjà été traitée');
+    }
+
+    const isRejection = !!dto.rejectionReason;
+
+    const updated = await this.prisma.accidentExpense.update({
+      where: { id: expenseId },
+      data: {
+        validatedById: actor.id,
+        validatedAt: new Date(),
+        rejectionReason: dto.rejectionReason ?? null,
+        isPaid: !isRejection,
+        paidAt: !isRejection ? new Date() : null,
+      },
+    });
+
+    this.auditService
+      .log({
+        actorId: actor.id,
+        action: AuditActions.ACCIDENT_EXPENSE_VALIDATED,
+        entityType: EntityTypes.ACCIDENT_CASE,
+        entityId: id,
+        afterJson: {
+          expenseId,
+          validated: !isRejection,
+          rejectionReason: dto.rejectionReason,
+        },
+      })
+      .catch(() => {});
+
+    return updated;
+  }
+
+  // ─── Clôture ───────────────────────────────────────────────────────────────
+
+  async close(id: string, dto: CloseAccidentCaseDto, actor: User) {
+    const accidentCase = await this.prisma.accidentCase.findFirst({ where: { id } });
+    if (!accidentCase) throw new NotFoundException('Dossier accident introuvable');
+    if (accidentCase.status !== AccidentCaseStatus.OPEN) {
+      throw new BadRequestException(
+        `Dossier déjà ${accidentCase.status} — clôture impossible`,
+      );
+    }
+
+    // La clôture standard requiert que le véhicule soit retourné
+    const targetStatus = dto.status ?? AccidentCaseStatus.CLOSED;
+    const isDisputedClose = targetStatus === AccidentCaseStatus.DISPUTED;
+
+    if (
+      !isDisputedClose &&
+      accidentCase.currentStep !== AccidentStep.VEHICLE_RETURNED
+    ) {
+      throw new BadRequestException(
+        `Le dossier doit être à l'étape VEHICLE_RETURNED avant clôture — étape actuelle: ${accidentCase.currentStep}`,
+      );
+    }
+
+    const updated = await this.prisma.accidentCase.update({
+      where: { id },
+      data: { status: targetStatus },
+      include: ACCIDENT_INCLUDE,
+    });
+
+    this.auditService
+      .log({
+        actorId: actor.id,
+        action: AuditActions.ACCIDENT_CLOSED,
+        entityType: EntityTypes.ACCIDENT_CASE,
+        entityId: id,
+        afterJson: { status: targetStatus },
+      })
+      .catch(() => {});
+
+    // Notifier le manager
+    if (updated.incident?.managerId) {
+      this.notificationsService
+        .send({
+          userId: updated.incident.managerId,
+          type: NotificationType.ACCIDENT_RESOLVED,
+          title: `Dossier accident ${targetStatus}`,
+          message: `Le dossier accident a été ${targetStatus === AccidentCaseStatus.CLOSED ? 'clôturé' : 'marqué en litige'}.`,
+          priority: NotificationPriority.NORMAL,
+          entityType: EntityTypes.ACCIDENT_CASE,
+          entityId: id,
+        })
+        .catch(() => {});
+    }
+
+    return updated;
+  }
 }

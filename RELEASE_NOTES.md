@@ -2,6 +2,95 @@
 
 ---
 
+## [Phase 3-B] — 2026-05-31 · Operational Modules
+
+> Tag: `phase-3B-operational`
+> Schema: V3 (47 models · 59 enums)
+
+---
+
+### Added
+
+#### MediaModule (storage abstraction)
+- `IMediaStorageProvider` interface with `STORAGE_PROVIDER` injection token — swappable LocalStorage → S3 → GCS
+- `LocalStorageProvider` — writes to `process.cwd()/uploads`, configurable via `MEDIA_LOCAL_DIR` and `MEDIA_BASE_URL`
+- `MediaService.upload()` — validates MIME type, max 50MB, D-06 anti-fraud (driver must use `IN_APP_CAMERA`), creates `MediaAsset`
+- `MediaService.getSignedUrl()` — extracts key from stored URL, delegates TTL to storage provider
+- `MediaService.createPhotoMission()` / `submitPhotoMission()` / `validatePhotoMission()` — full photo mission lifecycle
+- `@Cron('0 10 * * *')` — marks OVERDUE missions, sends HIGH priority notifications to drivers
+- Routes: `POST /media/upload`, `GET /media/:id`, `GET /media/:id/url`, `POST /media/photos`, `POST /media/photo-missions`, `GET /media/photo-missions/:id`, `POST /media/photo-missions/:id/submit`, `POST /media/photo-missions/:id/validate`
+
+#### DocumentsModule (versioning + expiry cron)
+- `DocumentsService.create()` — archives previous version (`isLatest=false`, `status=ARCHIVED`), increments `version`, sets `parentDocId`, computes status from `validUntil`
+- `DocumentsService.computeStatus()` — `ALWAYS_VALID → VALID → EXPIRING_SOON (≤30j) → EXPIRED`
+- `DocumentExpiryService.checkDocumentExpiry()` — `@Cron('0 8 * * *')` — updates status, sends reminders at 30/15/7/1 days (R-22/R-23), dedup via `reminder*SentAt` fields
+- Critical expired documents notify all ADMINs at HIGH priority
+- `notifyOwner=true` → owner receives `OWNER_DOCUMENT_EXPIRING_SOON` / `OWNER_DOCUMENT_EXPIRED`
+- Routes: `GET /documents`, `GET /documents/:id`, `GET /documents/entity/:entityType/:entityId`, `POST /documents`, `PATCH /documents/:id`, `POST /documents/:id/archive`
+
+#### InspectionsModule (double signature + R-09)
+- `InspectionsService.driverSign()` — guards `PENDING_DRIVER`, transitions to `DRIVER_SIGNED`, notifies manager
+- `InspectionsService.managerSign()` — transitions to `COMPLETED`, triggers R-09 fire-and-forget if `VEHICLE_RETURN` + `fuelLevelOut ≠ FULL`
+- R-09: auto-creates `Charge(type=CLEANING, status=PENDING_VALIDATION, amount=dailyAmount)` for driver responsibility
+- `InspectionsService.linkReturnToHandover()` — sets `linkedHandoverInspectionId` + `returnComparisonNotes`
+- `InspectionsService.generateComparison()` — computes fuel delta (via `FUEL_LEVEL_ORDER` map), mileage delta, item diffs (damaged / missing / clean), `summary.hasIssues`
+- Routes: `GET /inspections`, `GET /inspections/:id`, `POST /inspections`, `POST /inspections/:id/add-item`, `POST /inspections/:id/driver-sign`, `POST /inspections/:id/manager-sign`, `POST /inspections/:id/link-return`, `GET /inspections/:id/comparison`
+
+#### IncidentsModule (OPEN→IN_PROGRESS→RESOLVED→CLOSED)
+- Strict status machine: `OPEN → IN_PROGRESS → RESOLVED → CLOSED`
+- `close()` requires prior `RESOLVED` status — SUPER_MANAGER only
+- Notifications: `ACCIDENT_DECLARED` for ACCIDENT type, `BREAKDOWN_DECLARED` for BREAKDOWN
+- Routes: `GET /incidents`, `GET /incidents/:id`, `POST /incidents`, `PATCH /incidents/:id`, `POST /incidents/:id/in-progress`, `POST /incidents/:id/resolve`, `POST /incidents/:id/close`
+
+#### AccidentsModule (14-step workflow)
+- `STEP_ORDER` map enforces strict linear progression — no backward steps
+- `STEP_TIMESTAMP_FIELD` map auto-fills the corresponding `*At` field on `AccidentCase`
+- Step-specific data: `towingCompany`, `towingCost`, `towingPlateVisible`, `towingPhotoUrl` on towing steps
+- Full `AccidentStepHistory` recorded on every advance
+- `addExpense()` / `validateExpense()` — `AccidentExpense` management, SUPER_MANAGER validates
+- `close()` — standard close requires `VEHICLE_RETURNED` step; `DISPUTED` close bypasses step requirement
+- Routes: `GET /accidents`, `GET /accidents/:id`, `GET /accidents/by-incident/:incidentId`, `POST /accidents`, `POST /accidents/:id/advance-step`, `POST /accidents/:id/expenses`, `POST /accidents/:id/expenses/:expenseId/validate`, `POST /accidents/:id/close`
+
+#### MaintenanceModule (preventive + corrective + mileage tracking)
+- `MaintenanceService.complete()` — transitions to `COMPLETED`, syncs `Vehicle.currentMileage` if mileage provided
+- `MaintenanceService.syncVehicleMileage()` — private helper, only updates if new mileage > current (no regression)
+- `createMileageRecord()` — validates no mileage regression; auto-validates if `source=MANAGER` or `CARCUL`
+- `validateMileageRecord()` — manager validation of DRIVER-submitted records, updates vehicle mileage
+- Routes: `GET /maintenance`, `GET /maintenance/:id`, `POST /maintenance`, `PATCH /maintenance/:id`, `POST /maintenance/:id/complete`, `POST /maintenance/:id/cancel`, `GET /maintenance/mileage/records`, `POST /maintenance/mileage/records`, `POST /maintenance/mileage/records/:id/validate`
+
+#### Tests (5 new spec files)
+- `documents/document-expiry.service.spec.ts` — 5 scenarios: EXPIRED transition, EXPIRING_SOON, dedup reminder, admin alert critique, owner notification
+- `inspections/inspections.service.spec.ts` — 7 scenarios: create, NotFoundException vehicle, driverSign guard, managerSign R-09 (no charge if FULL, charge if < FULL), generateComparison (fuel delta, items, BadRequest si pas de remise liée)
+- `accidents/accidents.service.spec.ts` — 8 scenarios: create, type guard, doublon guard, step advance, backward step rejected, close status CLOSED, close DISPUTED, reject close if not VEHICLE_RETURNED
+- `maintenance/maintenance.service.spec.ts` — 8 scenarios: create, vehicle not found, complete + sync mileage, déjà complété, validateMileageRecord, déjà validé, no regression, auto-validate MANAGER source
+- `owners/owner-visibility.spec.ts` — 7 scenarios: masquer toutes données financières, laisser driver name visible, tout exposer permissive, GPS masqué indépendamment, accidents masqués indépendamment, ROI masqué, défauts schema respectés
+
+---
+
+### Schema V3 additions (confirmed)
+- `OwnerPortalVisibilitySettings` model (12 visibility flags including showGps, showDocuments, showAccidents, showMaintenance, showNotifications, showRoi)
+- `OwnerRentalPayment` model (expectedAmount / actualAmount, `@@unique([contractId, periodYear, periodMonth])`)
+- `OwnerPaymentFrequency` enum: MONTHLY, WEEKLY, BIWEEKLY, CUSTOM
+- `RentalPaymentStatus` enum: PENDING, PAID, LATE, DISPUTED
+- Contract: `vehicleInvestmentCost`, `simpleRentalMonthlyAmount`, `ownerPaymentFrequency`, relations to `ownerPortalSettings` and `ownerRentalPayments`
+- Inspection: `linkedHandoverInspectionId` self-FK + `returnComparisonNotes`
+- AccidentCase: `declaredById`, `policeReportNumber`, `estimatedRepairDays`, `repairDeadline`, `insuranceDocumentId`
+- Document: `notifyOwner`, `expiryNotifiedAt`
+
+---
+
+### Remains (known limitations at Phase 3-B)
+
+| ID | Issue | Phase target |
+|----|-------|-------------|
+| L-01 | `prisma generate` not run — TypeScript compilation requires migration + generate | Pre-deploy |
+| L-02 | FuelModule, AvailabilityModule, ImmobilizationsModule, SpecialAbsencesModule, OwnerPortalModule — not yet implemented (stub only) | Phase 3-C / Phase 4 |
+| L-03 | Payment rejection does not reverse DailyEntry allocations | Phase 4 |
+| L-04 | OwnerPortalService (filter by OwnerPortalVisibilitySettings) — stub, logic tested in owner-visibility.spec.ts | Phase 4 |
+| L-05 | S3StorageProvider / GCSStorageProvider adapters — interface ready, LocalStorage only in prod | Phase 5 |
+
+---
+
 ## [Phase 3-A.5] — 2026-05-31 · Financial Core Stabilisation
 
 > Tag: `phase-3A-complete`  
