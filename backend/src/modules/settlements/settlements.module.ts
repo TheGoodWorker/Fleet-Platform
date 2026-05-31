@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { settlementsController } from './settlements.controller';
-import { settlementsService } from './settlements.service';
+import { SettlementsController } from './settlements.controller';
+import { SettlementsService } from './settlements.service';
 
 @Module({
-  controllers: [settlementsController],
-  providers: [settlementsService],
-  exports: [settlementsService],
+  controllers: [SettlementsController],
+  providers: [SettlementsService],
+  exports: [SettlementsService],
 })
-export class settlementsModule {}
+export class SettlementsModule {}

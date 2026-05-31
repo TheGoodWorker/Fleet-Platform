@@ -1,12 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { tasksService } from './tasks.service';
+import { TasksService } from './tasks.service';
 
 @ApiTags('tasks')
 @ApiBearerAuth('JWT')
 @Controller('tasks')
-export class tasksController {
-  constructor(private readonly service: tasksService) {}
+export class TasksController {
+  constructor(private readonly service: TasksService) {}
 
   @Get('health')
   health() {

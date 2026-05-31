@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
-export class tasksService {
+export class TasksService {
   constructor(private prisma: PrismaService) {}
   // TODO Phase 3+: Implémenter la logique métier tasks
 }
