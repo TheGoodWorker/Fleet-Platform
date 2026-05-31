@@ -30,6 +30,11 @@ import { SettlementsModule } from './modules/settlements/settlements.module';
 import { LedgerModule } from './modules/ledger/ledger.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { DailyEntriesModule } from './modules/daily-entries/daily-entries.module';
+import { AvailabilityModule } from './modules/availability/availability.module';
+import { ImmobilizationsModule } from './modules/immobilizations/immobilizations.module';
+import { SpecialAbsencesModule } from './modules/special-absences/special-absences.module';
+import { FuelModule } from './modules/fuel/fuel.module';
+import { OwnerPortalModule } from './modules/owner-portal/owner-portal.module';
 
 @Module({
   imports: [
@@ -83,6 +88,12 @@ import { DailyEntriesModule } from './modules/daily-entries/daily-entries.module
     LedgerModule,
     AuditModule,
     DailyEntriesModule,
+    // Phase 3-C — Terrain Operations & Owner Portal
+    AvailabilityModule,
+    ImmobilizationsModule,
+    SpecialAbsencesModule,
+    FuelModule,
+    OwnerPortalModule,
   ],
 })
 export class AppModule {}

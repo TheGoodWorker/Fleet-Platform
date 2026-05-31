@@ -351,6 +351,27 @@ R-23  Expiry reminders sent once each at 30d, 15d, 7d, 1d
 
 ---
 
+## Phase 3-C — Terrain Operations & Owner Portal ✅
+
+> **Completed:** 2026-05-31 · Commit: (see git log)
+
+### Modules implemented
+
+| Module | Key rules enforced | Tests |
+|--------|-------------------|-------|
+| `AvailabilityModule` | D-15: source unique pour indisponibilité véhicule | ✅ 4 cas |
+| `ImmobilizationsModule` | Garde anti-double, D-15, release → resolve | ✅ 5 cas |
+| `SpecialAbsencesModule` | Workflow PENDING→REVIEWED→APPROVED/REJECTED, D-15 | ✅ 7 cas |
+| `FuelModule` | R-08 INITIAL_FULL_TANK=FULL, R-09 opt-in charge auto | ✅ 7 cas |
+| `OwnerPortalModule` | D-16 SIMPLE_RENTAL guard, ROI Arbitrage I, 12 flags visibilité | ✅ 10 cas |
+
+### Constants updated
+- `audit-actions.ts` — 10 nouvelles actions Phase 3-C
+- `entity-types.ts` — 3 nouveaux types : SPECIAL_ABSENCE, AVAILABILITY_EVENT, OWNER_RENTAL_PAYMENT
+- `app.module.ts` — 5 nouveaux modules enregistrés
+
+---
+
 ## Next Recommended Phase
 
 ### Phase 3-B — Operational Modules
@@ -393,9 +414,10 @@ Phase 2        ✅  Hardening & Unit Tests
 Phase 3-A      ✅  Financial Core — Payments, DailyEntries, Charges, Deposits
 Phase 3-A.5    ✅  Stabilisation — Completion workflow, KYC integration, Cron
 Phase 3-B arch ✅  Architecture finalized — Schema V3, ERD V3, ADR D-16/D-17
-Phase 3-B      🔲  Operational — Media, Documents, Inspections, Fuel, Availability,
-                   Immobilizations, SpecialAbsences, Incidents, Accidents, Maintenance,
-                   OwnerPortal (11 modules)
+Phase 3-B      ✅  Operational — Documents, Media, Inspections, Incidents, Accidents,
+                   Maintenance (6 modules, commit 1d67080)
+Phase 3-C      ✅  Terrain & Owner Portal — Availability, Immobilizations,
+                   SpecialAbsences, Fuel, OwnerPortal (5 modules)
 Phase 4        ❌  Financial Closure — Repossessions, Settlements, Scoring, Analytics
 Phase 5        ❌  Flutter Mobile — Admin app, Manager app, Driver app + GPS/Carcul/Wave
 Phase 6        ❌  Observability — Monitoring, alerting, CI/CD, E2E tests, load testing

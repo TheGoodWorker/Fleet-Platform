@@ -2,6 +2,68 @@
 
 ---
 
+## [Phase 3-C] — 2026-05-31 · Terrain Operations & Owner Portal
+
+> Tag: `phase-3C-terrain-owner`
+> Schema: V3 (47 models · 59 enums) — no schema changes
+
+### Added — 5 new modules (15 files)
+
+#### AvailabilityModule (`GET/POST /availability`)
+- `AvailabilityService.recordEvent()` — source unique de vérité D-15 pour la non-disponibilité véhicule
+- `AvailabilityService.resolveEvent()` / `resolveActiveEventsForSource()` — résolution manuelle ou automatique
+- Endpoint `GET /availability/vehicle/:vehicleId/active` — état d'indisponibilité courant
+- Exporté vers ImmobilizationsModule et SpecialAbsencesModule
+
+#### ImmobilizationsModule (`GET/POST /immobilizations`)
+- `ImmobilizationsService.start()` — crée immobilisation + événement IMMOBILIZED (D-15), garde anti-double
+- `ImmobilizationsService.release()` — termine l'immobilisation, résout l'événement de disponibilité
+- Notifications manager + chauffeur à la création et à la libération
+
+#### SpecialAbsencesModule (`GET/POST /special-absences`)
+- Workflow PENDING → MANAGER_REVIEWED → APPROVED/REJECTED
+- `managerReview()` — décision directe (approved) ou escalade vers super-managers
+- `smValidate()` — validation finale par super-manager
+- `onApproved()` (privé) — déclenche événement SPECIAL_ABSENCE (D-15) + notifie chauffeur
+- `cancel()` et `close()` — résolution des événements de disponibilité associés
+
+#### FuelModule (`GET/POST /fuel`)
+- `FuelService.record()` — R-08 : INITIAL_FULL_TANK exige `fuelLevel = FULL`
+- R-09 opt-in : flag `autoCreateDiscrepancyCharge` → crée Charge(CLEANING, PENDING_VALIDATION) automatique
+- `validate()` — correction de niveau possible par manager
+- `getVehicleFuelHistory()` — historique + summary (lastHandoverLevel, lastReturnLevel, delta, hasDiscrepancy)
+
+#### OwnerPortalModule (`GET/PATCH /owner-portal`)
+- `upsertVisibilitySettings()` — D-16 : SIMPLE_RENTAL interdit pour showDailyEntries/showDriverPayments/showCharges/showGrossRevenue
+- `getDashboard()` — tableau de bord filtré selon les 12 flags de visibilité (vehicleDetails, driverName, rentalPayments, ROI, documents, accidents, maintenance, notifications)
+- `getFinancialSummary()` — bilan mensuel avec balance totale
+- `recordRentalPayment()` — auto-calcul statut PAID/PENDING, unicité (contractId, year, month), notification propriétaire
+- ROI brut (Arbitrage I) : `(cumulativePaid − investmentCost) / investmentCost * 100`
+
+### Changed
+- `audit-actions.ts` — +10 nouvelles actions : SPECIAL_ABSENCE_*, FUEL_*, OWNER_*, AVAILABILITY_*
+- `entity-types.ts` — +3 : SPECIAL_ABSENCE, AVAILABILITY_EVENT, OWNER_RENTAL_PAYMENT
+- `app.module.ts` — 5 nouveaux modules enregistrés
+
+### Tests
+- `availability.service.spec.ts` — lifecycle complet (recordEvent, resolveEvent, resolveActiveEventsForSource, findActiveForVehicle)
+- `immobilizations.service.spec.ts` — start/release, garde anti-double, D-15
+- `special-absences.service.spec.ts` — workflow complet (request → review → smValidate → cancel)
+- `fuel.service.spec.ts` — R-08, R-09 opt-in, validate, delta carburant
+- `owner-portal.service.spec.ts` — D-16 guard, visibilité filtering, ROI Arbitrage I, auto-statut PAID/PENDING
+
+### Permissions utilisées
+- `CONFIGURE_OWNER_VISIBILITY` — PATCH visibility settings
+- `VIEW_OWNER_PORTAL` — GET dashboard / financial summary
+- `RECORD_OWNER_PAYMENT` — POST/PATCH rental payments
+- `MANAGE_IMMOBILIZATION` — POST immobilizations / release
+- `MANAGE_SPECIAL_ABSENCE` — POST special-absences
+- `APPROVE_SPECIAL_ABSENCE` — sm-validate (SUPER_MANAGER uniquement)
+- `RECORD_FUEL` — POST fuel transactions
+- `VALIDATE_MILEAGE` — POST fuel validate
+
+---
+
 ## [Phase 3-B] — 2026-05-31 · Operational Modules
 
 > Tag: `phase-3B-operational`
