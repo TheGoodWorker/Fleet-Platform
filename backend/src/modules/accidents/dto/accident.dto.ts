@@ -89,6 +89,11 @@ export class AddExpenseDto {
 export class ValidateExpenseDto {
   @ApiPropertyOptional({ description: 'Motif de rejet (si rejet)' })
   @IsOptional() @IsString() rejectionReason?: string;
+
+  @ApiPropertyOptional({
+    description: 'Indicateur que la validation SM a déjà été obtenue (R-13 — dépenses ≥ seuil)',
+  })
+  @IsOptional() @IsBoolean() smValidated?: boolean;
 }
 
 // ─── Clôture dossier ───────────────────────────────────────────────────────

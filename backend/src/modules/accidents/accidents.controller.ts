@@ -102,6 +102,20 @@ export class AccidentsController {
     return this.service.validateExpense(id, expenseId, dto, actor);
   }
 
+  /** R-13 : Validation Super Manager pour dépenses dépassant le seuil ACCIDENT_EXPENSE_SM_THRESHOLD */
+  @Post(':id/expenses/:expenseId/sm-validate')
+  @Roles(UserRole.SUPER_MANAGER)
+  @RequirePermission(Perm.VALIDATE_ACCIDENT_EXPENSE)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'R-13 : Valider une dépense ≥ seuil (Super Manager obligatoire)' })
+  smValidateExpense(
+    @Param('id') id: string,
+    @Param('expenseId') expenseId: string,
+    @CurrentUser() actor: User,
+  ) {
+    return this.service.smValidateExpense(id, expenseId, actor);
+  }
+
   // ─── Clôture ───────────────────────────────────────────────────────────────
 
   @Post(':id/close')

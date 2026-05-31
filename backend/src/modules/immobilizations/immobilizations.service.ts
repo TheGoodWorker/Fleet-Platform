@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import {
   ImmobilizationStatus, NotificationType, NotificationPriority, User,
-  VehicleAvailabilityEventType,
+  VehicleAvailabilityEventType, VehicleStatus, DayStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -94,6 +94,26 @@ export class ImmobilizationsService {
       },
       include: IMMOB_INCLUDE,
     });
+
+    // FIX 2 : mettre à jour vehicle.status = IMMOBILIZED
+    this.prisma.vehicle.update({
+      where: { id: dto.vehicleId },
+      data: { status: VehicleStatus.IMMOBILIZED },
+    }).catch((err) => this.logger.warn(`Mise à jour statut véhicule IMMOBILIZED échouée: ${err?.message}`));
+
+    // FIX 10 : mettre à jour les DailyEntry actives du contrat → IMMOBILIZED
+    // IMMOBILIZED days ne comptent pas dans validatedDays (règle R-03)
+    if (dto.contractId) {
+      const startDate = new Date(dto.startDate);
+      this.prisma.dailyEntry.updateMany({
+        where: {
+          contractId: dto.contractId,
+          date: { gte: startDate },
+          status: { in: [DayStatus.UNPAID, DayStatus.PARTIALLY_PAID] },
+        },
+        data: { status: DayStatus.IMMOBILIZED },
+      }).catch((err) => this.logger.warn(`Mise à jour DailyEntry IMMOBILIZED échouée: ${err?.message}`));
+    }
 
     // D-15 : enregistrer événement de disponibilité
     this.availabilityService
@@ -200,6 +220,10 @@ export class ImmobilizationsService {
       .resolveActiveEventsForSource(EntityTypes.IMMOBILIZATION, id, actor)
       .catch((err) => this.logger.warn(`Availability resolve failed: ${err?.message}`));
 
+    // FIX 2 : restaurer vehicle.status → ASSIGNED si contrat actif, sinon AVAILABLE
+    this.restoreVehicleStatus(updated.vehicleId)
+      .catch((err) => this.logger.warn(`Restauration statut véhicule après immobilisation échouée: ${err?.message}`));
+
     this.auditService
       .log({
         actorId: actor.id,
@@ -233,5 +257,26 @@ export class ImmobilizationsService {
     }
 
     return updated;
+  }
+
+  // ─── Helper — Restauration statut véhicule ─────────────────────────────────
+
+  private async restoreVehicleStatus(vehicleId: string): Promise<void> {
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId },
+      select: { currentContractId: true },
+    });
+    if (!vehicle) return;
+
+    const newStatus = vehicle.currentContractId
+      ? VehicleStatus.ASSIGNED
+      : VehicleStatus.AVAILABLE;
+
+    await this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: { status: newStatus },
+    });
+
+    this.logger.log(`Véhicule ${vehicleId} restauré → ${newStatus} après fin d'immobilisation`);
   }
 }

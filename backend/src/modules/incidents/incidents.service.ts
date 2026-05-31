@@ -2,11 +2,13 @@ import {
   Injectable, Logger, NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import {
-  IncidentStatus, IncidentSeverity, NotificationType, NotificationPriority, User,
+  IncidentStatus, IncidentSeverity, IncidentType, NotificationType,
+  NotificationPriority, User, VehicleStatus, VehicleAvailabilityEventType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AvailabilityService } from '../availability/availability.service';
 import { AuditActions } from '../../common/constants/audit-actions';
 import { EntityTypes } from '../../common/constants/entity-types';
 import {
@@ -36,6 +38,7 @@ export class IncidentsService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private notificationsService: NotificationsService,
+    private availabilityService: AvailabilityService,
   ) {}
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
@@ -101,9 +104,33 @@ export class IncidentsService {
       })
       .catch(() => {});
 
+    // FIX 1+2 — D-15 : si BREAKDOWN → enregistrer événement disponibilité + mettre à jour statut véhicule
+    if (dto.type === IncidentType.BREAKDOWN) {
+      // Mettre le véhicule en IMMOBILIZED
+      this.prisma.vehicle.update({
+        where: { id: dto.vehicleId },
+        data: { status: VehicleStatus.IMMOBILIZED },
+      }).catch((err) => this.logger.warn(`Mise à jour statut véhicule BREAKDOWN échouée: ${err?.message}`));
+
+      this.availabilityService
+        .recordEvent(
+          {
+            vehicleId: dto.vehicleId,
+            driverId: dto.driverId ?? undefined,
+            type: VehicleAvailabilityEventType.BREAKDOWN,
+            startDate: dto.occurredAt,
+            sourceEntityType: EntityTypes.INCIDENT,
+            sourceEntityId: incident.id,
+            notes: `Panne déclarée: ${dto.description}`,
+          },
+          actor,
+        )
+        .catch((err) => this.logger.warn(`Availability event breakdown échoué: ${err?.message}`));
+    }
+
     // Notifier le manager responsable si spécifié
     if (dto.managerId) {
-      const notifType = dto.type === 'ACCIDENT'
+      const notifType = dto.type === IncidentType.ACCIDENT
         ? NotificationType.ACCIDENT_DECLARED
         : NotificationType.BREAKDOWN_DECLARED;
 
@@ -198,6 +225,17 @@ export class IncidentsService {
       })
       .catch(() => {});
 
+    // FIX 1 — D-15 : résoudre l'événement de disponibilité si BREAKDOWN
+    if (incident.type === IncidentType.BREAKDOWN) {
+      this.availabilityService
+        .resolveActiveEventsForSource(EntityTypes.INCIDENT, id, actor)
+        .catch((err) => this.logger.warn(`Résolution availability BREAKDOWN échouée: ${err?.message}`));
+
+      // FIX 2 : restaurer statut véhicule
+      this.restoreVehicleStatus(incident.vehicleId)
+        .catch((err) => this.logger.warn(`Restauration statut véhicule incident échouée: ${err?.message}`));
+    }
+
     // Notifier le manager responsable
     if (incident.managerId) {
       this.notificationsService
@@ -242,5 +280,27 @@ export class IncidentsService {
       .catch(() => {});
 
     return updated;
+  }
+
+  // ─── Helpers ───────────────────────────────────────────────────────────────
+
+  /** Restaure le statut du véhicule après résolution d'un incident */
+  private async restoreVehicleStatus(vehicleId: string): Promise<void> {
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId },
+      select: { currentContractId: true },
+    });
+    if (!vehicle) return;
+
+    const newStatus = vehicle.currentContractId
+      ? VehicleStatus.ASSIGNED
+      : VehicleStatus.AVAILABLE;
+
+    await this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: { status: newStatus },
+    });
+
+    this.logger.log(`Véhicule ${vehicleId} restauré → ${newStatus} après résolution incident`);
   }
 }

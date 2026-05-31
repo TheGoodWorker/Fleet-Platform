@@ -3,10 +3,12 @@ import {
 } from '@nestjs/common';
 import {
   MaintenanceStatus, MileageSource, NotificationType, NotificationPriority, User,
+  VehicleStatus, VehicleAvailabilityEventType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AvailabilityService } from '../availability/availability.service';
 import { AuditActions } from '../../common/constants/audit-actions';
 import { EntityTypes } from '../../common/constants/entity-types';
 import {
@@ -26,6 +28,7 @@ export class MaintenanceService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private notificationsService: NotificationsService,
+    private availabilityService: AvailabilityService,
   ) {}
 
   // ─── Maintenance — Lecture ─────────────────────────────────────────────────
@@ -88,6 +91,27 @@ export class MaintenanceService {
         afterJson: { type: dto.type, vehicleId: dto.vehicleId, scheduledAt: dto.scheduledAt },
       })
       .catch(() => {});
+
+    // FIX 2 : mettre à jour vehicle.status = IN_REPAIR
+    this.prisma.vehicle.update({
+      where: { id: dto.vehicleId },
+      data: { status: VehicleStatus.IN_REPAIR },
+    }).catch((err) => this.logger.warn(`Mise à jour statut véhicule IN_REPAIR échouée: ${err?.message}`));
+
+    // FIX 1 — D-15 : enregistrer événement de disponibilité MAINTENANCE
+    this.availabilityService
+      .recordEvent(
+        {
+          vehicleId: dto.vehicleId,
+          type: VehicleAvailabilityEventType.MAINTENANCE,
+          startDate: dto.scheduledAt ?? new Date().toISOString(),
+          sourceEntityType: EntityTypes.MAINTENANCE,
+          sourceEntityId: record.id,
+          notes: `Maintenance ${dto.type}${dto.garage ? ` — Garage: ${dto.garage}` : ''}`,
+        },
+        actor,
+      )
+      .catch((err) => this.logger.warn(`Availability event maintenance échoué: ${err?.message}`));
 
     // Notifier le manager du véhicule si disponible
     if (vehicle.currentManagerId) {
@@ -164,6 +188,15 @@ export class MaintenanceService {
     if (dto.mileageAtService) {
       await this.syncVehicleMileage(record.vehicleId, dto.mileageAtService);
     }
+
+    // FIX 1 — D-15 : résoudre l'événement de disponibilité
+    this.availabilityService
+      .resolveActiveEventsForSource(EntityTypes.MAINTENANCE, id, actor)
+      .catch((err) => this.logger.warn(`Résolution availability maintenance échouée: ${err?.message}`));
+
+    // FIX 2 : restaurer statut véhicule → ASSIGNED si contrat actif, sinon AVAILABLE
+    this.restoreVehicleStatus(record.vehicleId)
+      .catch((err) => this.logger.warn(`Restauration statut véhicule après maintenance échouée: ${err?.message}`));
 
     this.auditService
       .log({
@@ -277,6 +310,27 @@ export class MaintenanceService {
     await this.syncVehicleMileage(record.vehicleId, record.mileage);
 
     return updated;
+  }
+
+  // ─── Utilitaire — Restauration statut véhicule ────────────────────────────
+
+  private async restoreVehicleStatus(vehicleId: string): Promise<void> {
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId },
+      select: { currentContractId: true },
+    });
+    if (!vehicle) return;
+
+    const newStatus = vehicle.currentContractId
+      ? VehicleStatus.ASSIGNED
+      : VehicleStatus.AVAILABLE;
+
+    await this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: { status: newStatus },
+    });
+
+    this.logger.log(`Véhicule ${vehicleId} restauré → ${newStatus} après fin de maintenance`);
   }
 
   // ─── Utilitaire — Sync kilométrage véhicule ────────────────────────────────

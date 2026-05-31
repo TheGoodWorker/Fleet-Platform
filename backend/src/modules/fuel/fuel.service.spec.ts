@@ -46,7 +46,7 @@ describe('FuelService', () => {
       mockPrisma.vehicle.findFirst.mockResolvedValue(null);
       await expect(
         service.record(
-          { vehicleId: 'v-x', type: FuelTransactionType.TOP_UP, fuelLevel: FuelLevel.HALF, recordedAt: '2026-05-01T00:00:00Z' } as any,
+          { vehicleId: 'v-x', type: FuelTransactionType.REFILL, fuelLevel: FuelLevel.HALF, recordedAt: '2026-05-01T00:00:00Z' } as any,
           mockActor,
         ),
       ).rejects.toThrow(NotFoundException);
@@ -170,7 +170,7 @@ describe('FuelService', () => {
     });
 
     it('valide la transaction avec correction de niveau possible', async () => {
-      const tx = { id: 'tx-1', validatedAt: null, fuelLevel: FuelLevel.HALF, notes: null, type: FuelTransactionType.TOP_UP };
+      const tx = { id: 'tx-1', validatedAt: null, fuelLevel: FuelLevel.HALF, notes: null, type: FuelTransactionType.REFILL };
       mockPrisma.fuelTransaction.findFirst.mockResolvedValue(tx);
       const updated = { ...tx, validatedAt: new Date(), fuelLevel: FuelLevel.THREE_QUARTERS };
       mockPrisma.fuelTransaction.update.mockResolvedValue(updated);
@@ -213,7 +213,7 @@ describe('FuelService', () => {
 
     it('delta null si aucun INITIAL_FULL_TANK ou RETURN_CHECK', async () => {
       mockPrisma.fuelTransaction.findMany.mockResolvedValue([
-        { type: FuelTransactionType.TOP_UP, fuelLevel: FuelLevel.FULL },
+        { type: FuelTransactionType.REFILL, fuelLevel: FuelLevel.FULL },
       ]);
 
       const result = await service.getVehicleFuelHistory('v-1');

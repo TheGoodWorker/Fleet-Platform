@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ContractStatus, ContractType, User, UserRole, VehicleStatus } from '@prisma/client';
+import { ContractStatus, ContractType, User, UserRole, VehicleStatus, AssignmentSource } from '@prisma/client';
 import { CreateContractDto, UpdateContractDto, ContractFiltersDto } from './dto/contract.dto';
 import { DailyEntriesService } from '../daily-entries/daily-entries.service';
 import { AuditService } from '../audit/audit.service';
@@ -65,6 +65,15 @@ export class ContractsService {
     if (dto.type === ContractType.OWNERSHIP_PROGRAM && !dto.targetDays) {
       throw new BadRequestException('Un contrat OWNERSHIP_PROGRAM requiert un nombre de jours cibles (targetDays)');
     }
+    // Validation SIMPLE_RENTAL — champs requis (D-17)
+    if (dto.type === ContractType.SIMPLE_RENTAL) {
+      if (!dto.simpleRentalMonthlyAmount) {
+        throw new BadRequestException('Un contrat SIMPLE_RENTAL requiert un loyer mensuel (simpleRentalMonthlyAmount)');
+      }
+      if (!dto.ownerPaymentFrequency) {
+        throw new BadRequestException('Un contrat SIMPLE_RENTAL requiert une fréquence de versement (ownerPaymentFrequency)');
+      }
+    }
 
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
@@ -89,6 +98,10 @@ export class ContractsService {
         mgmtFeePercentage: dto.mgmtFeePercentage !== undefined ? new Decimal(dto.mgmtFeePercentage) : undefined,
         mgmtFeeFixed: dto.mgmtFeeFixed !== undefined ? new Decimal(dto.mgmtFeeFixed) : undefined,
         notes: dto.notes,
+        // Champs SIMPLE_RENTAL (D-17)
+        vehicleInvestmentCost: dto.vehicleInvestmentCost !== undefined ? new Decimal(dto.vehicleInvestmentCost) : undefined,
+        simpleRentalMonthlyAmount: dto.simpleRentalMonthlyAmount !== undefined ? new Decimal(dto.simpleRentalMonthlyAmount) : undefined,
+        ownerPaymentFrequency: dto.ownerPaymentFrequency ?? undefined,
       },
       include: CONTRACT_INCLUDE,
     });
@@ -247,6 +260,26 @@ export class ContractsService {
         }
       }
 
+      // FIX 3 : créer VehicleDriverAssignment si un chauffeur est assigné
+      // Guard idempotence : ne pas créer si un assignment actif existe déjà
+      if (contract.driverId) {
+        const existingAssignment = await tx.vehicleDriverAssignment.findFirst({
+          where: { vehicleId: contract.vehicleId, driverId: contract.driverId, isActive: true },
+        });
+        if (!existingAssignment) {
+          await tx.vehicleDriverAssignment.create({
+            data: {
+              vehicleId: contract.vehicleId,
+              driverId: contract.driverId,
+              contractId: id,
+              startDate: now,
+              isActive: true,
+              source: AssignmentSource.MANAGER,
+            },
+          });
+        }
+      }
+
       // 4. Générer les 7 premiers DailyEntry
       if (contract.type === ContractType.OWNERSHIP_PROGRAM) {
         await this.dailyEntriesService.initializeContractEntries(
@@ -330,13 +363,15 @@ export class ContractsService {
       throw new BadRequestException('Seul un contrat ACTIVE ou SUSPENDED peut être clôturé');
     }
 
+    const closeDate = new Date();
+
     await this.prisma.$transaction(async (tx) => {
       await tx.contract.update({
         where: { id },
         data: {
           status: ContractStatus.TERMINATED,
-          closedAt: new Date(),
-          endDate: new Date(),
+          closedAt: closeDate,
+          endDate: closeDate,
         },
       });
 
@@ -349,6 +384,14 @@ export class ContractsService {
           currentDriverId: null,
         },
       });
+
+      // FIX 3 : fermer l'assignment actif du chauffeur
+      if (contract.driverId) {
+        await tx.vehicleDriverAssignment.updateMany({
+          where: { contractId: id, isActive: true },
+          data: { isActive: false, endDate: closeDate },
+        });
+      }
     });
 
     await this.auditService.log({

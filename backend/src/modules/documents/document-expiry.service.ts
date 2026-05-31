@@ -88,8 +88,8 @@ export class DocumentExpiryService {
         }
       }
 
-      // Document expiré critique → notifier Admin
-      if (daysLeft < 0 && doc.isCritical) {
+      // Document expiré critique → notifier Admin (une seule fois — R-22 guard)
+      if (daysLeft < 0 && doc.isCritical && !doc.expiryNotifiedAt) {
         await this.sendCriticalExpiryAlert(doc);
         await this.prisma.document.update({
           where: { id: doc.id },

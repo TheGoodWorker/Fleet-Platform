@@ -3,11 +3,12 @@ import {
 } from '@nestjs/common';
 import {
   AccidentStep, AccidentCaseStatus, NotificationType, NotificationPriority,
-  User, ChargeResponsible,
+  User, ChargeResponsible, VehicleStatus, VehicleAvailabilityEventType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AvailabilityService } from '../availability/availability.service';
 import { AuditActions } from '../../common/constants/audit-actions';
 import { EntityTypes } from '../../common/constants/entity-types';
 import {
@@ -15,9 +16,13 @@ import {
   ValidateExpenseDto, CloseAccidentCaseDto, AccidentFiltersDto,
 } from './dto/accident.dto';
 
+/** Seuil en FCFA au-delà duquel une dépense requiert une validation Super Manager (R-13) */
+export const ACCIDENT_EXPENSE_SM_THRESHOLD = 500_000;
+
 /**
  * Ordre strict des 14 étapes du workflow accident.
  * Une étape ne peut être validée qu'en respectant la progression linéaire.
+ * R-11 : newStep.order === currentStep.order + 1 (une seule étape à la fois)
  */
 const STEP_ORDER: Record<AccidentStep, number> = {
   DECLARED: 0,
@@ -80,6 +85,7 @@ export class AccidentsService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private notificationsService: NotificationsService,
+    private availabilityService: AvailabilityService,
   ) {}
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
@@ -176,6 +182,32 @@ export class AccidentsService {
       },
     });
 
+    // FIX 2 : mettre à jour vehicle.status = ACCIDENTED
+    if (incident.vehicleId) {
+      this.prisma.vehicle.update({
+        where: { id: incident.vehicleId },
+        data: { status: VehicleStatus.ACCIDENTED },
+      }).catch((err) => this.logger.warn(`Mise à jour statut véhicule échouée: ${err?.message}`));
+    }
+
+    // FIX 1 — D-15 : enregistrer événement de disponibilité ACCIDENTED
+    if (incident.vehicleId) {
+      this.availabilityService
+        .recordEvent(
+          {
+            vehicleId: incident.vehicleId,
+            driverId: incident.driverId ?? undefined,
+            type: VehicleAvailabilityEventType.ACCIDENTED,
+            startDate: now.toISOString(),
+            sourceEntityType: EntityTypes.ACCIDENT_CASE,
+            sourceEntityId: accidentCase.id,
+            notes: `Dossier accident ouvert — incident ${dto.incidentId}`,
+          },
+          actor,
+        )
+        .catch((err) => this.logger.warn(`Availability event accident échoué: ${err?.message}`));
+    }
+
     this.auditService
       .log({
         actorId: actor.id,
@@ -218,10 +250,17 @@ export class AccidentsService {
     const currentOrder = STEP_ORDER[accidentCase.currentStep];
     const newOrder = STEP_ORDER[dto.step];
 
-    // L'étape doit progresser (pas reculer, pas rester identique)
-    if (newOrder <= currentOrder) {
+    // FIX 8 — R-11 : une seule étape à la fois (ordre strict)
+    if (newOrder !== currentOrder + 1) {
       throw new BadRequestException(
-        `L'étape ${dto.step} (ordre ${newOrder}) ne peut pas succéder à ${accidentCase.currentStep} (ordre ${currentOrder})`,
+        `R-11 : L'étape doit progresser d'exactement un cran — étape actuelle: ${accidentCase.currentStep} (ordre ${currentOrder}), étape demandée: ${dto.step} (ordre ${newOrder})`,
+      );
+    }
+
+    // FIX 8 — R-12 : VEHICLE_TOWED exige towingPlateVisible = true
+    if (dto.step === AccidentStep.VEHICLE_TOWED && dto.towingPlateVisible !== true) {
+      throw new BadRequestException(
+        'R-12 : La photo de remorquage doit montrer la plaque visible (towingPlateVisible = true)',
       );
     }
 
@@ -329,6 +368,17 @@ export class AccidentsService {
 
     const isRejection = !!dto.rejectionReason;
 
+    // FIX 8 — R-13 : dépenses ≥ seuil requièrent une validation Super Manager
+    const amount = typeof expense.amount === 'object'
+      ? Number(expense.amount.toString())
+      : Number(expense.amount);
+
+    if (!isRejection && amount >= ACCIDENT_EXPENSE_SM_THRESHOLD && !dto.smValidated) {
+      throw new BadRequestException(
+        `R-13 : Cette dépense (${amount} FCFA) dépasse le seuil de ${ACCIDENT_EXPENSE_SM_THRESHOLD} FCFA — validation Super Manager requise. Utilisez POST /accidents/:id/expenses/:expenseId/sm-validate`,
+      );
+    }
+
     const updated = await this.prisma.accidentExpense.update({
       where: { id: expenseId },
       data: {
@@ -350,7 +400,52 @@ export class AccidentsService {
           expenseId,
           validated: !isRejection,
           rejectionReason: dto.rejectionReason,
+          amount,
+          smValidated: dto.smValidated ?? false,
         },
+      })
+      .catch(() => {});
+
+    return updated;
+  }
+
+  /** R-13 : Validation Super Manager pour les dépenses dépassant le seuil */
+  async smValidateExpense(id: string, expenseId: string, actor: User) {
+    const expense = await this.prisma.accidentExpense.findFirst({
+      where: { id: expenseId, accidentCaseId: id },
+    });
+    if (!expense) throw new NotFoundException('Dépense introuvable');
+    if (expense.validatedAt) {
+      throw new BadRequestException('Cette dépense a déjà été validée');
+    }
+
+    const amount = typeof expense.amount === 'object'
+      ? Number(expense.amount.toString())
+      : Number(expense.amount);
+
+    if (amount < ACCIDENT_EXPENSE_SM_THRESHOLD) {
+      throw new BadRequestException(
+        `Dépense de ${amount} FCFA en-dessous du seuil SM (${ACCIDENT_EXPENSE_SM_THRESHOLD} FCFA) — utilisez validate standard`,
+      );
+    }
+
+    const updated = await this.prisma.accidentExpense.update({
+      where: { id: expenseId },
+      data: {
+        validatedById: actor.id,
+        validatedAt: new Date(),
+        isPaid: true,
+        paidAt: new Date(),
+      },
+    });
+
+    this.auditService
+      .log({
+        actorId: actor.id,
+        action: AuditActions.ACCIDENT_EXPENSE_VALIDATED,
+        entityType: EntityTypes.ACCIDENT_CASE,
+        entityId: id,
+        afterJson: { expenseId, smValidated: true, amount },
       })
       .catch(() => {});
 
@@ -360,7 +455,10 @@ export class AccidentsService {
   // ─── Clôture ───────────────────────────────────────────────────────────────
 
   async close(id: string, dto: CloseAccidentCaseDto, actor: User) {
-    const accidentCase = await this.prisma.accidentCase.findFirst({ where: { id } });
+    const accidentCase = await this.prisma.accidentCase.findFirst({
+      where: { id },
+      include: { incident: { select: { vehicleId: true, driverId: true } } },
+    });
     if (!accidentCase) throw new NotFoundException('Dossier accident introuvable');
     if (accidentCase.status !== AccidentCaseStatus.OPEN) {
       throw new BadRequestException(
@@ -386,6 +484,17 @@ export class AccidentsService {
       data: { status: targetStatus },
       include: ACCIDENT_INCLUDE,
     });
+
+    // FIX 1 — D-15 : résoudre l'événement de disponibilité
+    this.availabilityService
+      .resolveActiveEventsForSource(EntityTypes.ACCIDENT_CASE, id, actor)
+      .catch((err) => this.logger.warn(`Résolution événement accident échouée: ${err?.message}`));
+
+    // FIX 2 : restaurer vehicle.status → ASSIGNED si contrat actif, sinon AVAILABLE
+    if (accidentCase.incident?.vehicleId) {
+      this.restoreVehicleStatus(accidentCase.incident.vehicleId)
+        .catch((err) => this.logger.warn(`Restauration statut véhicule échouée: ${err?.message}`));
+    }
 
     this.auditService
       .log({
@@ -413,5 +522,27 @@ export class AccidentsService {
     }
 
     return updated;
+  }
+
+  // ─── Helpers ───────────────────────────────────────────────────────────────
+
+  /** Restaure le statut du véhicule après la clôture d'un dossier accident */
+  private async restoreVehicleStatus(vehicleId: string): Promise<void> {
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId },
+      select: { currentContractId: true },
+    });
+    if (!vehicle) return;
+
+    const newStatus = vehicle.currentContractId
+      ? VehicleStatus.ASSIGNED
+      : VehicleStatus.AVAILABLE;
+
+    await this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: { status: newStatus },
+    });
+
+    this.logger.log(`Véhicule ${vehicleId} restauré → ${newStatus} après clôture accident`);
   }
 }

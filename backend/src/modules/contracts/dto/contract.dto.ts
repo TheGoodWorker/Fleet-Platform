@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString, IsEnum, IsOptional, IsNumber, IsInt, IsUUID, Min, IsBoolean,
 } from 'class-validator';
-import { ContractType, MgmtFeeType, MgmtFeeBase } from '@prisma/client';
+import { ContractType, MgmtFeeType, MgmtFeeBase, OwnerPaymentFrequency } from '@prisma/client';
 
 export class CreateContractDto {
   @ApiProperty({ enum: ContractType }) @IsEnum(ContractType) type: ContractType;
@@ -32,6 +32,25 @@ export class CreateContractDto {
   @ApiPropertyOptional({ example: 15000 }) @IsOptional() @IsNumber() @Min(0) mgmtFeeFixed?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+
+  // ── Champs SIMPLE_RENTAL (D-17) ─────────────────────────────────────────────
+  @ApiPropertyOptional({
+    description: 'Coût d\'investissement véhicule en FCFA (SIMPLE_RENTAL) — pour calcul ROI Arbitrage I',
+    example: 5000000,
+  })
+  @IsOptional() @IsNumber() @Min(0) vehicleInvestmentCost?: number;
+
+  @ApiPropertyOptional({
+    description: 'Loyer mensuel fixe propriétaire en FCFA (SIMPLE_RENTAL)',
+    example: 250000,
+  })
+  @IsOptional() @IsNumber() @Min(0) simpleRentalMonthlyAmount?: number;
+
+  @ApiPropertyOptional({
+    enum: OwnerPaymentFrequency,
+    description: 'Fréquence de versement au propriétaire (SIMPLE_RENTAL)',
+  })
+  @IsOptional() @IsEnum(OwnerPaymentFrequency) ownerPaymentFrequency?: OwnerPaymentFrequency;
 }
 
 export class UpdateContractDto {

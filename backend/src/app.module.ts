@@ -35,6 +35,8 @@ import { ImmobilizationsModule } from './modules/immobilizations/immobilizations
 import { SpecialAbsencesModule } from './modules/special-absences/special-absences.module';
 import { FuelModule } from './modules/fuel/fuel.module';
 import { OwnerPortalModule } from './modules/owner-portal/owner-portal.module';
+import { ContraventionsModule } from './modules/contraventions/contraventions.module';
+import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 
 @Module({
   imports: [
@@ -94,6 +96,9 @@ import { OwnerPortalModule } from './modules/owner-portal/owner-portal.module';
     SpecialAbsencesModule,
     FuelModule,
     OwnerPortalModule,
+    // Phase 3-E — Critical Business Fixes
+    ContraventionsModule,
+    RepossessionsModule,
   ],
 })
 export class AppModule {}

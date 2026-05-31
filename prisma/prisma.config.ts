@@ -5,6 +5,5 @@ import type { PrismaConfig } from 'prisma'
 // La connexion DB est gérée ici, pas dans schema.prisma
 
 export default {
-  earlyAccess: true,
-  schema: path.join('prisma', 'schema.prisma'),
+  schema: path.join('/Users/jamalburemoh/Fleet-Platform/prisma', 'schema.prisma'),
 } satisfies PrismaConfig

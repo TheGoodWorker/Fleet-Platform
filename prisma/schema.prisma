@@ -8,6 +8,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../backend/node_modules/.prisma/client"
 }
 
 datasource db {
@@ -981,6 +982,9 @@ model Vehicle {
   lastKnownMileage Int?
   lastMileageAt    DateTime?
 
+  // Kilométrage courant (mis à jour lors de chaque saisie validée)
+  currentMileage   Int?
+
   scoreValue Float @default(100.0)
 
   createdAt DateTime  @default(now())
@@ -1877,7 +1881,7 @@ model Inspection {
 
   // Lien remise → retour : l'inspection de retour référence l'inspection de remise
   // pour comparer l'état du véhicule (carburant, kilométrage, items de checklist)
-  linkedHandoverInspectionId String?
+  linkedHandoverInspectionId String?  @unique
   linkedHandoverInspection    Inspection?  @relation("InspectionReturn", fields: [linkedHandoverInspectionId], references: [id])
   returnInspection            Inspection?  @relation("InspectionReturn")
   returnComparisonNotes       String?      // Écarts constatés entre remise et retour

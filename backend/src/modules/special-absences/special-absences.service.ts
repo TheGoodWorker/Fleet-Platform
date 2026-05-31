@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import {
   SpecialAbsenceStatus, NotificationType, NotificationPriority, User,
-  VehicleAvailabilityEventType,
+  VehicleAvailabilityEventType, DayStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -313,6 +313,26 @@ export class SpecialAbsencesService {
         afterJson: { estimatedDays: absence.estimatedDays, reason: absence.reason },
       })
       .catch(() => {});
+
+    // FIX 9 : mettre à jour les DailyEntry concernées → EXCUSED
+    // EXCUSED days ne comptent pas dans validatedDays (règle R-03)
+    if (absence.contractId) {
+      const startDate = new Date(absence.startDate);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + absence.estimatedDays);
+
+      this.prisma.dailyEntry.updateMany({
+        where: {
+          contractId: absence.contractId,
+          date: {
+            gte: startDate,
+            lt: endDate,
+          },
+          status: { not: DayStatus.VALIDATED }, // Ne pas toucher les jours déjà payés
+        },
+        data: { status: DayStatus.EXCUSED },
+      }).catch((err) => this.logger.warn(`Mise à jour DailyEntry EXCUSED échouée: ${err?.message}`));
+    }
 
     // D-15 : enregistrer événement de disponibilité
     const endDate = new Date(absence.startDate);

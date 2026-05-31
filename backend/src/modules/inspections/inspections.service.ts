@@ -245,23 +245,45 @@ export class InspectionsService {
     return updated;
   }
 
-  /** R-09 : génère une charge automatique si niveau carburant < FULL au retour */
+  /** R-09 : génère une charge automatique si niveau carburant < FULL au retour.
+   *  Idempotent : vérifie qu'une charge carburant pour ce contrat/inspection
+   *  n'existe pas déjà (guard anti-doublon avec FuelService.record()).
+   */
   private async createFuelDiscrepancyCharge(inspection: any, actor: User): Promise<void> {
     if (!inspection.contractId) return;
 
     const contract = await this.prisma.contract.findFirst({ where: { id: inspection.contractId } });
     if (!contract) return;
 
+    // Guard idempotence : chercher une charge FUEL existante pour ce contrat/véhicule
+    const existingFuelCharge = await this.prisma.charge.findFirst({
+      where: {
+        contractId: inspection.contractId,
+        vehicleId: inspection.vehicleId,
+        type: ChargeType.CLEANING,
+        proposedResponsible: ChargeResponsible.DRIVER,
+        description: { contains: 'Carburant manquant' },
+        createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) }, // dernières 5 minutes
+      },
+    });
+
+    if (existingFuelCharge) {
+      this.logger.warn(
+        `Charge carburant R-09 déjà existante (${existingFuelCharge.id}) — doublon ignoré pour inspection ${inspection.id}`,
+      );
+      return;
+    }
+
     await this.prisma.charge.create({
       data: {
-        type: ChargeType.CLEANING, // Ou OTHER — convention fleet
+        type: ChargeType.CLEANING,
         status: ChargeStatus.PENDING_VALIDATION,
-        amount: contract.dailyAmount, // Montant = 1 jour — à ajuster par le manager
+        amount: contract.dailyAmount,
         vehicleId: inspection.vehicleId,
         contractId: inspection.contractId,
         driverId: inspection.driverId ?? null,
         proposedResponsible: ChargeResponsible.DRIVER,
-        description: `Carburant manquant au retour — niveau constaté: ${inspection.fuelLevelOut}`,
+        description: `Carburant manquant au retour — niveau constaté: ${inspection.fuelLevelOut} (inspection ${inspection.id})`,
         createdById: actor.id,
         incidentId: null,
       },

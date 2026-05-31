@@ -1,5 +1,5 @@
 import {
-  Injectable, Logger, NotFoundException,
+  BadRequestException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
 import { VehicleAvailabilityEventType, User } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -118,6 +118,7 @@ export class AvailabilityService {
   async resolveEvent(id: string, dto: ResolveAvailabilityEventDto, actor: User) {
     const event = await this.prisma.vehicleAvailabilityEvent.findFirst({ where: { id } });
     if (!event) throw new NotFoundException(`Événement disponibilité ${id} introuvable`);
+    if (event.resolvedAt) throw new BadRequestException(`Événement ${id} déjà résolu`);
 
     const resolved = await this.prisma.vehicleAvailabilityEvent.update({
       where: { id },

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { SpecialAbsenceStatus, NotificationType, NotificationPriority } from '@prisma/client';
+import { SpecialAbsenceStatus, NotificationType, NotificationPriority, DayStatus } from '@prisma/client';
 import { SpecialAbsencesService } from './special-absences.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -18,6 +18,7 @@ const mockPrisma = {
     update: jest.fn(),
     count: jest.fn(),
   },
+  dailyEntry: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
 };
 
 const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -114,9 +115,13 @@ describe('SpecialAbsencesService', () => {
         id: 'abs-1',
         status: SpecialAbsenceStatus.PENDING,
         driverId: 'd-1',
+        contractId: 'c-1',
+        estimatedDays: 3,
+        startDate: new Date('2026-05-10'),
         vehicleId: 'v-1',
-        contract: { managerId: 'mgr-1' },
+        contract: { managerId: 'mgr-1', vehicleId: 'v-1' },
         driver: { userId: 'u-1' },
+        reason: 'Maladie',
       };
       mockPrisma.specialAbsence.findFirst.mockResolvedValue(absence);
       const updated = { ...absence, status: SpecialAbsenceStatus.APPROVED };
@@ -131,6 +136,31 @@ describe('SpecialAbsencesService', () => {
       );
       // onApproved déclenche AvailabilityService.recordEvent
       expect(mockAvailability.recordEvent).toHaveBeenCalled();
+    });
+
+    it('FIX 9 : dailyEntry.updateMany(EXCUSED) appelé lors de l\'approbation manager', async () => {
+      const absence = {
+        id: 'abs-1',
+        status: SpecialAbsenceStatus.PENDING,
+        driverId: 'd-1',
+        contractId: 'c-1',
+        estimatedDays: 3,
+        startDate: new Date('2026-05-10'),
+        contract: { managerId: 'mgr-1', vehicleId: 'v-1' },
+        driver: { userId: 'u-1' },
+        reason: 'Maladie',
+      };
+      mockPrisma.specialAbsence.findFirst.mockResolvedValue(absence);
+      mockPrisma.specialAbsence.update.mockResolvedValue({ ...absence, status: SpecialAbsenceStatus.APPROVED });
+
+      await service.managerReview('abs-1', { decision: 'approved' }, mockActor);
+
+      expect(mockPrisma.dailyEntry.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contractId: 'c-1' }),
+          data: { status: DayStatus.EXCUSED },
+        }),
+      );
     });
 
     it('escalate → passe à MANAGER_REVIEWED et notifie les super-managers', async () => {
@@ -160,10 +190,10 @@ describe('SpecialAbsencesService', () => {
   // ─── smValidate ─────────────────────────────────────────────────────────────
 
   describe('smValidate', () => {
-    it('lève BadRequestException si absence non MANAGER_REVIEWED', async () => {
+    it('lève BadRequestException si absence dans un état non validable (REJECTED)', async () => {
       mockPrisma.specialAbsence.findFirst.mockResolvedValue({
         id: 'abs-1',
-        status: SpecialAbsenceStatus.PENDING,
+        status: SpecialAbsenceStatus.REJECTED,
       });
       await expect(service.smValidate('abs-1', { decision: 'approved' }, mockActor)).rejects.toThrow(BadRequestException);
     });
@@ -174,8 +204,12 @@ describe('SpecialAbsencesService', () => {
         status: SpecialAbsenceStatus.MANAGER_REVIEWED,
         vehicleId: 'v-1',
         driverId: 'd-1',
+        contractId: 'c-1',
+        estimatedDays: 2,
+        startDate: new Date('2026-05-12'),
         driver: { userId: 'u-1' },
-        contract: { managerId: 'mgr-1' },
+        contract: { managerId: 'mgr-1', vehicleId: 'v-1' },
+        reason: 'Congé',
       };
       mockPrisma.specialAbsence.findFirst.mockResolvedValue(absence);
       mockPrisma.specialAbsence.update.mockResolvedValue({ ...absence, status: SpecialAbsenceStatus.APPROVED });
@@ -183,6 +217,31 @@ describe('SpecialAbsencesService', () => {
       await service.smValidate('abs-1', { decision: 'approved' }, mockActor);
 
       expect(mockAvailability.recordEvent).toHaveBeenCalled();
+    });
+
+    it('FIX 9 : dailyEntry.updateMany(EXCUSED) appelé lors de l\'approbation SM', async () => {
+      const absence = {
+        id: 'abs-1',
+        status: SpecialAbsenceStatus.MANAGER_REVIEWED,
+        driverId: 'd-1',
+        contractId: 'c-1',
+        estimatedDays: 2,
+        startDate: new Date('2026-05-12'),
+        driver: { userId: 'u-1' },
+        contract: { managerId: 'mgr-1', vehicleId: 'v-1' },
+        reason: 'Congé',
+      };
+      mockPrisma.specialAbsence.findFirst.mockResolvedValue(absence);
+      mockPrisma.specialAbsence.update.mockResolvedValue({ ...absence, status: SpecialAbsenceStatus.APPROVED });
+
+      await service.smValidate('abs-1', { decision: 'approved' }, mockActor);
+
+      expect(mockPrisma.dailyEntry.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contractId: 'c-1' }),
+          data: { status: DayStatus.EXCUSED },
+        }),
+      );
     });
 
     it('rejected → REJECTED + notifie chauffeur', async () => {

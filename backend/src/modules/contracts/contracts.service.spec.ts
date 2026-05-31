@@ -46,9 +46,12 @@ const buildContract = (overrides = {}) => ({
 });
 
 const mockPrisma = {
-  contract: { findFirst: jest.fn(), update: jest.fn() },
-  vehicle: { update: jest.fn() },
+  contract: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
+  vehicle: { update: jest.fn(), findFirst: jest.fn() },
   driver: { findFirst: jest.fn(), update: jest.fn() },
+  vehicleDriverAssignment: { findFirst: jest.fn(), create: jest.fn(), updateMany: jest.fn() },
+  owner: { findFirst: jest.fn() },
+  deposit: { findFirst: jest.fn() },
   $transaction: jest.fn(),
 };
 
@@ -62,6 +65,12 @@ describe('ContractsService — activate()', () => {
   let service: ContractsService;
 
   beforeEach(async () => {
+    jest.resetAllMocks();
+    // Re-set default resolved values wiped by resetAllMocks
+    mockDailyEntries.initializeContractEntries.mockResolvedValue(['e1', 'e2']);
+    mockAudit.log.mockResolvedValue(undefined);
+    mockNotifications.send.mockResolvedValue(undefined);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractsService,
@@ -73,7 +82,6 @@ describe('ContractsService — activate()', () => {
     }).compile();
 
     service = module.get<ContractsService>(ContractsService);
-    jest.clearAllMocks();
   });
 
   // ─── Activation réussie ────────────────────────────────────────────────────
@@ -91,6 +99,10 @@ describe('ContractsService — activate()', () => {
         driver: {
           findFirst: jest.fn().mockResolvedValue({ status: 'APPROVED' }),
           update: jest.fn(),
+        },
+        vehicleDriverAssignment: {
+          findFirst: jest.fn().mockResolvedValue(null), // pas d'assignment actif
+          create: jest.fn().mockResolvedValue({ id: 'vda-new' }),
         },
       };
       return fn(tx);
@@ -168,5 +180,132 @@ describe('ContractsService — activate()', () => {
   it('retourne NotFoundException si le contrat n\'existe pas', async () => {
     mockPrisma.contract.findFirst.mockResolvedValue(null);
     await expect(service.activate('unknown-id', mockAdmin as any)).rejects.toThrow(NotFoundException);
+  });
+
+  // ─── FIX 3 : VehicleDriverAssignment créé à l'activation ─────────────────
+
+  it('FIX 3 : VehicleDriverAssignment est créé lors de l\'activation', async () => {
+    const contract = buildContract();
+    mockPrisma.contract.findFirst
+      .mockResolvedValueOnce(contract)
+      .mockResolvedValueOnce(contract);
+
+    let txVdaCreate: jest.Mock;
+    let txVdaFindFirst: jest.Mock;
+
+    mockPrisma.$transaction.mockImplementation(async (fn: any) => {
+      txVdaCreate = jest.fn().mockResolvedValue({ id: 'vda-1' });
+      txVdaFindFirst = jest.fn().mockResolvedValue(null); // pas d'assignment actif existant
+      const tx = {
+        contract: { update: jest.fn() },
+        vehicle: { update: jest.fn() },
+        driver: {
+          findFirst: jest.fn().mockResolvedValue({ status: 'APPROVED' }),
+          update: jest.fn(),
+        },
+        vehicleDriverAssignment: {
+          findFirst: txVdaFindFirst,
+          create: txVdaCreate,
+        },
+      };
+      return fn(tx);
+    });
+    mockPrisma.driver.findFirst.mockResolvedValue({ userId: 'user-id' });
+
+    await service.activate('contract-id', mockAdmin as any);
+
+    expect(txVdaCreate!).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          vehicleId: 'vehicle-id',
+          driverId: 'driver-id',
+          contractId: 'contract-id',
+          isActive: true,
+        }),
+      }),
+    );
+  });
+
+  it('FIX 3 : VehicleDriverAssignment idempotent — pas de doublon si déjà actif', async () => {
+    const contract = buildContract();
+    mockPrisma.contract.findFirst
+      .mockResolvedValueOnce(contract)
+      .mockResolvedValueOnce(contract);
+
+    let txVdaCreate: jest.Mock;
+
+    mockPrisma.$transaction.mockImplementation(async (fn: any) => {
+      txVdaCreate = jest.fn().mockResolvedValue({ id: 'vda-1' });
+      const tx = {
+        contract: { update: jest.fn() },
+        vehicle: { update: jest.fn() },
+        driver: {
+          findFirst: jest.fn().mockResolvedValue({ status: 'APPROVED' }),
+          update: jest.fn(),
+        },
+        vehicleDriverAssignment: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'existing-vda', isActive: true }), // déjà actif
+          create: txVdaCreate,
+        },
+      };
+      return fn(tx);
+    });
+    mockPrisma.driver.findFirst.mockResolvedValue({ userId: 'user-id' });
+
+    await service.activate('contract-id', mockAdmin as any);
+
+    // Pas de création si déjà actif
+    expect(txVdaCreate!).not.toHaveBeenCalled();
+  });
+});
+
+// ─── FIX 6 : SIMPLE_RENTAL DTO validation ────────────────────────────────────
+
+describe('ContractsService — create() SIMPLE_RENTAL', () => {
+  let service: ContractsService;
+
+  beforeEach(async () => {
+    jest.resetAllMocks();
+    mockDailyEntries.initializeContractEntries.mockResolvedValue(['e1', 'e2']);
+    mockAudit.log.mockResolvedValue(undefined);
+    mockNotifications.send.mockResolvedValue(undefined);
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ContractsService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: DailyEntriesService, useValue: mockDailyEntries },
+        { provide: AuditService, useValue: mockAudit },
+        { provide: NotificationsService, useValue: mockNotifications },
+      ],
+    }).compile();
+    service = module.get<ContractsService>(ContractsService);
+  });
+
+  const simpleRentalBase = {
+    type: ContractType.SIMPLE_RENTAL,
+    vehicleId: 'vehicle-id',
+    driverId: 'driver-id',
+    dailyAmount: 10000,
+    startDate: '2026-06-01',
+    simpleRentalMonthlyAmount: 300000,
+    ownerPaymentFrequency: 'MONTHLY',
+  };
+
+  it('FIX 6 : rejette SIMPLE_RENTAL sans simpleRentalMonthlyAmount', async () => {
+    const dto = { ...simpleRentalBase };
+    delete (dto as any).simpleRentalMonthlyAmount;
+
+    // Le service valide avant même d'appeler prisma
+    await expect(service.create(dto as any, mockAdmin as any))
+      .rejects.toThrow(BadRequestException);
+  });
+
+  it('FIX 6 : rejette SIMPLE_RENTAL sans ownerPaymentFrequency', async () => {
+    const dto = { ...simpleRentalBase };
+    delete (dto as any).ownerPaymentFrequency;
+
+    await expect(service.create(dto as any, mockAdmin as any))
+      .rejects.toThrow(BadRequestException);
   });
 });

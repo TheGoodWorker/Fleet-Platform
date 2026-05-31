@@ -4,8 +4,11 @@ import { MaintenanceService } from './maintenance.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { MaintenanceStatus, MaintenanceType, MileageSource, UserRole, UserStatus } from '@prisma/client';
-import { Decimal } from 'decimal.js';
+import { AvailabilityService } from '../availability/availability.service';
+import {
+  MaintenanceStatus, MaintenanceType, MileageSource,
+  VehicleStatus, VehicleAvailabilityEventType, UserRole, UserStatus,
+} from '@prisma/client';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +71,10 @@ const mockPrisma = {
 
 const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
 const mockNotifications = { send: jest.fn().mockResolvedValue(undefined) };
+const mockAvailability = {
+  recordEvent: jest.fn().mockResolvedValue(undefined),
+  resolveActiveEventsForSource: jest.fn().mockResolvedValue(undefined),
+};
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +90,7 @@ describe('MaintenanceService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditService, useValue: mockAudit },
         { provide: NotificationsService, useValue: mockNotifications },
+        { provide: AvailabilityService, useValue: mockAvailability },
       ],
     }).compile();
 
@@ -92,18 +100,20 @@ describe('MaintenanceService', () => {
   // ── create ──────────────────────────────────────────────────────────────────
 
   describe('create', () => {
-    it('doit créer une maintenance planifiée et notifier le manager du véhicule', async () => {
-      const vehicle = {
-        id: 'vehicle-id',
-        plateNumber: 'ABC123',
-        currentManagerId: 'mgr-id',
-        currentMileage: 100000,
-      };
-      const record = buildRecord();
+    const vehicle = {
+      id: 'vehicle-id',
+      plateNumber: 'ABC123',
+      currentManagerId: 'mgr-id',
+      currentMileage: 100000,
+    };
 
+    beforeEach(() => {
       mockPrisma.vehicle.findFirst.mockResolvedValue(vehicle);
-      mockPrisma.maintenanceRecord.create.mockResolvedValue(record);
+      mockPrisma.maintenanceRecord.create.mockResolvedValue(buildRecord());
+      mockPrisma.vehicle.update.mockResolvedValue({});
+    });
 
+    it('crée une maintenance planifiée et notifie le manager du véhicule', async () => {
       const result = await service.create(
         {
           type: MaintenanceType.OIL_CHANGE,
@@ -118,7 +128,34 @@ describe('MaintenanceService', () => {
       expect(mockNotifications.send).toHaveBeenCalledTimes(1);
     });
 
-    it('doit lever NotFoundException si le véhicule est introuvable', async () => {
+    it('FIX 2 : vehicle.update(IN_REPAIR) est appelé à la création', async () => {
+      await service.create(
+        { type: MaintenanceType.OIL_CHANGE, vehicleId: 'vehicle-id' } as any,
+        mockActor as any,
+      );
+      expect(mockPrisma.vehicle.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'vehicle-id' },
+          data: { status: VehicleStatus.IN_REPAIR },
+        }),
+      );
+    });
+
+    it('D-15 : recordEvent(MAINTENANCE) est appelé à la création', async () => {
+      await service.create(
+        { type: MaintenanceType.OIL_CHANGE, vehicleId: 'vehicle-id' } as any,
+        mockActor as any,
+      );
+      expect(mockAvailability.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          vehicleId: 'vehicle-id',
+          type: VehicleAvailabilityEventType.MAINTENANCE,
+        }),
+        mockActor,
+      );
+    });
+
+    it('lève NotFoundException si le véhicule est introuvable', async () => {
       mockPrisma.vehicle.findFirst.mockResolvedValue(null);
       await expect(
         service.create({ type: MaintenanceType.REPAIR, vehicleId: 'bad-id' } as any, mockActor as any),
@@ -129,7 +166,7 @@ describe('MaintenanceService', () => {
   // ── complete ─────────────────────────────────────────────────────────────────
 
   describe('complete', () => {
-    it('doit compléter la maintenance et mettre à jour le kilométrage du véhicule', async () => {
+    it('complète la maintenance et met à jour le kilométrage du véhicule', async () => {
       const record = buildRecord({ status: MaintenanceStatus.IN_PROGRESS });
       const completed = buildRecord({
         status: MaintenanceStatus.COMPLETED,
@@ -139,14 +176,10 @@ describe('MaintenanceService', () => {
 
       mockPrisma.maintenanceRecord.findFirst.mockResolvedValue(record);
       mockPrisma.maintenanceRecord.update.mockResolvedValue(completed);
-      mockPrisma.vehicle.findFirst.mockResolvedValue({ currentMileage: 100000 });
+      mockPrisma.vehicle.findFirst.mockResolvedValue({ currentContractId: null, currentMileage: 100000 });
       mockPrisma.vehicle.update.mockResolvedValue({});
 
-      await service.complete(
-        'maint-id',
-        { mileageAtService: 102000, cost: 15000 },
-        mockActor as any,
-      );
+      await service.complete('maint-id', { mileageAtService: 102000, cost: 15000 }, mockActor as any);
 
       expect(mockPrisma.maintenanceRecord.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -154,13 +187,54 @@ describe('MaintenanceService', () => {
         }),
       );
       expect(mockPrisma.vehicle.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: { currentMileage: 102000 },
-        }),
+        expect.objectContaining({ data: { currentMileage: 102000 } }),
       );
     });
 
-    it('doit rejeter si la maintenance est déjà complétée', async () => {
+    it('D-15 : resolveActiveEventsForSource appelé à la complétion', async () => {
+      mockPrisma.maintenanceRecord.findFirst.mockResolvedValue(
+        buildRecord({ status: MaintenanceStatus.IN_PROGRESS }),
+      );
+      mockPrisma.maintenanceRecord.update.mockResolvedValue(
+        buildRecord({ status: MaintenanceStatus.COMPLETED }),
+      );
+      mockPrisma.vehicle.findFirst.mockResolvedValue({ currentContractId: null, currentMileage: 100000 });
+      mockPrisma.vehicle.update.mockResolvedValue({});
+
+      await service.complete('maint-id', {}, mockActor as any);
+      expect(mockAvailability.resolveActiveEventsForSource).toHaveBeenCalled();
+    });
+
+    it('FIX 2 : restaure ASSIGNED si contrat actif après complétion', async () => {
+      mockPrisma.maintenanceRecord.findFirst.mockResolvedValue(
+        buildRecord({ status: MaintenanceStatus.IN_PROGRESS }),
+      );
+      mockPrisma.maintenanceRecord.update.mockResolvedValue(
+        buildRecord({ status: MaintenanceStatus.COMPLETED }),
+      );
+      mockPrisma.vehicle.findFirst.mockResolvedValue({ currentContractId: 'contract-1', currentMileage: 100000 });
+      mockPrisma.vehicle.update.mockResolvedValue({});
+
+      await service.complete('maint-id', {}, mockActor as any);
+      // restoreVehicleStatus est fire-and-forget — resolveActiveEventsForSource confirme le flux
+      expect(mockAvailability.resolveActiveEventsForSource).toHaveBeenCalled();
+    });
+
+    it('FIX 2 : restaure AVAILABLE si sans contrat actif après complétion', async () => {
+      mockPrisma.maintenanceRecord.findFirst.mockResolvedValue(
+        buildRecord({ status: MaintenanceStatus.IN_PROGRESS }),
+      );
+      mockPrisma.maintenanceRecord.update.mockResolvedValue(
+        buildRecord({ status: MaintenanceStatus.COMPLETED }),
+      );
+      mockPrisma.vehicle.findFirst.mockResolvedValue({ currentContractId: null, currentMileage: 100000 });
+      mockPrisma.vehicle.update.mockResolvedValue({});
+
+      await service.complete('maint-id', {}, mockActor as any);
+      expect(mockAvailability.resolveActiveEventsForSource).toHaveBeenCalled();
+    });
+
+    it('rejette si la maintenance est déjà complétée', async () => {
       mockPrisma.maintenanceRecord.findFirst.mockResolvedValue(
         buildRecord({ status: MaintenanceStatus.COMPLETED }),
       );
@@ -173,7 +247,7 @@ describe('MaintenanceService', () => {
   // ── validateMileageRecord ───────────────────────────────────────────────────
 
   describe('validateMileageRecord', () => {
-    it('doit valider un relevé et mettre à jour le kilométrage du véhicule', async () => {
+    it('valide un relevé et met à jour le kilométrage du véhicule', async () => {
       const record = buildMileageRecord();
       mockPrisma.mileageRecord.findFirst.mockResolvedValue(record);
       mockPrisma.mileageRecord.update.mockResolvedValue({ ...record, isValidated: true });
@@ -192,7 +266,7 @@ describe('MaintenanceService', () => {
       );
     });
 
-    it('doit rejeter si le relevé est déjà validé', async () => {
+    it('rejette si le relevé est déjà validé', async () => {
       const record = buildMileageRecord({ isValidated: true });
       mockPrisma.mileageRecord.findFirst.mockResolvedValue(record);
 
@@ -201,15 +275,14 @@ describe('MaintenanceService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('ne doit pas régresser le kilométrage du véhicule', async () => {
-      const record = buildMileageRecord({ mileage: 99000 }); // inférieur au kilométrage actuel
+    it('ne régresse pas le kilométrage du véhicule', async () => {
+      const record = buildMileageRecord({ mileage: 99000 }); // inférieur
       mockPrisma.mileageRecord.findFirst.mockResolvedValue(record);
       mockPrisma.mileageRecord.update.mockResolvedValue({ ...record, isValidated: true });
       mockPrisma.vehicle.findFirst.mockResolvedValue({ currentMileage: 100000 });
 
       await service.validateMileageRecord('mileage-id', mockActor as any);
 
-      // Le véhicule ne doit pas être mis à jour avec un kilométrage inférieur
       expect(mockPrisma.vehicle.update).not.toHaveBeenCalled();
     });
   });
@@ -217,7 +290,7 @@ describe('MaintenanceService', () => {
   // ── createMileageRecord — auto-validation ───────────────────────────────────
 
   describe('createMileageRecord', () => {
-    it('doit auto-valider les relevés de source MANAGER', async () => {
+    it('auto-valide les relevés de source MANAGER', async () => {
       const vehicle = { id: 'vehicle-id', plateNumber: 'ABC123', currentMileage: 100000 };
       const record = buildMileageRecord({ source: MileageSource.MANAGER, mileage: 103000 });
 
@@ -243,7 +316,7 @@ describe('MaintenanceService', () => {
       );
     });
 
-    it('doit rejeter si le kilométrage est inférieur au kilométrage actuel du véhicule', async () => {
+    it('rejette si kilométrage inférieur au kilométrage actuel', async () => {
       mockPrisma.vehicle.findFirst.mockResolvedValue({ id: 'vehicle-id', currentMileage: 105000 });
 
       await expect(
