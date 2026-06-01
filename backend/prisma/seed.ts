@@ -1,7 +1,13 @@
+import 'dotenv/config'; // charge backend/.env avant tout accès à process.env
 import { PrismaClient, UserRole, PermissionModule } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+// Prisma 7 engine type "client" requiert un driver adapter
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 const PERMISSIONS = [
   // VEHICLES
@@ -227,4 +233,7 @@ main()
     console.error('❌ Erreur seed:', e);
     process.exit(1);
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    await prisma.$disconnect();
+    await pool.end();
+  });

@@ -1,5 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
 // ─── Modèles avec soft-delete automatique ────────────────────────────────────
 const SOFT_DELETE_MODELS = ['User', 'Driver', 'Owner', 'Vehicle', 'Contract'] as const;
@@ -10,8 +12,11 @@ function isSoftDelete(model?: string): model is SoftDeleteModel {
 }
 
 // ─── Client étendu (soft-delete via query extensions Prisma 7) ───────────────
-function buildExtendedClient(log: any[]) {
-  return new PrismaClient({ log }).$extends({
+// Prisma 7 engine type "client" requiert un driver adapter.
+// On passe le pool pg → PrismaPg → PrismaClient.
+function buildExtendedClient(log: any[], pool: Pool) {
+  const adapter = new PrismaPg(pool);
+  return new PrismaClient({ log, adapter }).$extends({
     query: {
       $allModels: {
         async findMany({ model, args, query }: any) {
@@ -56,6 +61,7 @@ type ExtendedPrismaClient = ReturnType<typeof buildExtendedClient>;
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
   private readonly _client: ExtendedPrismaClient;
+  private readonly _pool: Pool;
 
   // Déclarations d'index pour satisfaire les appels dynamiques (prismaService.user etc.)
   [key: string]: any;
@@ -69,13 +75,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         : []),
     ];
 
-    this._client = buildExtendedClient(log);
+    // Création du pool pg depuis DATABASE_URL (chargé par ConfigModule avant ce constructeur)
+    this._pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+
+    this._client = buildExtendedClient(log, this._pool);
 
     // Proxy — délègue tous les accès inconnus sur this vers _client
     // (ex: this.user, this.vehicle, this.$transaction, this.$executeRaw…)
     return new Proxy(this, {
       get(target: any, prop: string | symbol, receiver: any) {
-        // Propriétés propres au service (logger, _client, méthodes NestJS)
+        // Propriétés propres au service (logger, _client, _pool, méthodes NestJS)
         if (prop in target) {
           const val: any = Reflect.get(target, prop, receiver);
           return typeof val === 'function' ? val.bind(target) : val;
@@ -101,6 +112,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     await (this._client as any).$disconnect();
+    await this._pool.end();
     this.logger.log('🔌 Connexion PostgreSQL fermée');
   }
 }
