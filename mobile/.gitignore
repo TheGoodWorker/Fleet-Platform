@@ -1,0 +1,31 @@
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+
+# Gradlle (Android)
+android/.gradle/
+android/local.properties
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+
+# Dart code gen
+*.g.dart
+*.freezed.dart
+
+# Coverage
+coverage/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/settings.json
+
+# Env (ne pas committer les valeurs de prod)
+# Conserver .env.example — committer .env uniquement en dev
+# .env

@@ -1,0 +1,46 @@
+name: fleet_mobile
+description: Fleet Platform — Application mobile VTC
+
+publish_to: 'none'
+version: 2.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ─── HTTP ──────────────────────────────────────────────────────────────────
+  dio: ^5.4.3
+
+  # ─── Stockage sécurisé (tokens JWT) ────────────────────────────────────────
+  flutter_secure_storage: ^9.2.2
+
+  # ─── Variables d'environnement ──────────────────────────────────────────────
+  flutter_dotenv: ^5.1.0
+
+  # ─── Navigation ─────────────────────────────────────────────────────────────
+  go_router: ^14.2.7
+
+  # ─── State management ───────────────────────────────────────────────────────
+  flutter_bloc: ^8.1.6
+  equatable: ^2.0.5
+
+  # ─── Injection de dépendances ────────────────────────────────────────────────
+  get_it: ^7.7.0
+
+  # ─── Icônes ──────────────────────────────────────────────────────────────────
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  mocktail: ^1.0.4
+  bloc_test: ^9.1.7
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
