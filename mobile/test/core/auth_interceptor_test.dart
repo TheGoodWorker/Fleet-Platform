@@ -96,7 +96,11 @@ void main() {
       );
 
       final handler = ErrorInterceptorHandler();
-      await interceptor.onError(err, handler);
+      // handler.reject() propagates through the Dio chain and may throw —
+      // wrap so the assertion below is always reachable.
+      try {
+        await interceptor.onError(err, handler);
+      } catch (_) {}
 
       // logout doit être appelé quand le refresh endpoint lui-même retourne 401
       expect(logoutCalled, isTrue);

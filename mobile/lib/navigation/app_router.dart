@@ -144,7 +144,7 @@ class _AuthBlocListenable extends ChangeNotifier {
 
   @override
   void dispose() {
-    _subscription?.cancel();
+    _subscription.cancel();
     super.dispose();
   }
 }

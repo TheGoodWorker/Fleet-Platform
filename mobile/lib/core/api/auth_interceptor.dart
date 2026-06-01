@@ -163,12 +163,13 @@ class AuthInterceptor extends Interceptor {
     } else {
       final statusCode = err.response?.statusCode;
       apiEx = switch (statusCode) {
+        null => const NetworkException(),
         401 => const UnauthorizedException(),
         403 => const ForbiddenException(),
         404 => const NotFoundException(),
         422 => _parseValidationError(err.response),
         429 => const TooManyRequestsException(),
-        >= 500 => ServerException(statusCode ?? 500),
+        final code when code >= 500 => ServerException(code),
         _ => const UnknownException(),
       };
     }

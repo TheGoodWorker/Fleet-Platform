@@ -82,10 +82,11 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   ApiException _handleDioError(DioException e) {
     if (e.error is ApiException) return e.error as ApiException;
     return switch (e.response?.statusCode) {
+      null => const NetworkException(),
       401 => const UnauthorizedException(),
       403 => const ForbiddenException(),
       429 => const TooManyRequestsException(),
-      >= 500 => ServerException(e.response?.statusCode ?? 500),
+      final code when code >= 500 => ServerException(code),
       _ => const NetworkException(),
     };
   }
