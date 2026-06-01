@@ -143,7 +143,8 @@ class _UserProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (user == null) return const SizedBox.shrink();
+    final u = user;
+    if (u == null) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -160,7 +161,7 @@ class _UserProfileCard extends StatelessWidget {
             radius: 28,
             backgroundColor: Colors.white.withValues(alpha: 0.2),
             child: Text(
-              user.initials,
+              u.initials,
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,
@@ -181,7 +182,7 @@ class _UserProfileCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  user.fullName,
+                  u.fullName,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -197,7 +198,7 @@ class _UserProfileCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    user.role.label,
+                    u.role.label,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -278,9 +279,9 @@ class _ApiStatusCard extends StatelessWidget {
                             : AppColors.error,
                   ),
                 ),
-                Text(
+                const Text(
                   'Backend Fleet Platform V2',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),

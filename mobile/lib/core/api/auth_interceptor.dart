@@ -25,7 +25,7 @@ class AuthInterceptor extends Interceptor {
 
   /// Dio séparé pour l'appel refresh (évite la boucle infinie sur le
   /// même client qui a l'interceptor)
-  Dio? _refreshDio;
+  final Dio? _refreshDio;
 
   bool _isRefreshing = false;
   final List<Function> _pendingRequests = [];

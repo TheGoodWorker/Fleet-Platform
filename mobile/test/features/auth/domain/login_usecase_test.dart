@@ -12,7 +12,7 @@ void main() {
   late MockAuthRepository mockRepository;
   late LoginUseCase loginUseCase;
 
-  final testUser = User(
+  const testUser = User(
     id: 'user-1',
     firstName: 'Mamadou',
     lastName: 'Diallo',

@@ -1,5 +1,6 @@
 /// Exceptions API Fleet Platform
 /// Mappe les erreurs HTTP et réseau en exceptions typées
+library;
 
 sealed class ApiException implements Exception {
   const ApiException(this.message);
