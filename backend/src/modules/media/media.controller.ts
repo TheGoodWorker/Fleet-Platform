@@ -41,33 +41,6 @@ export class MediaController {
     return this.service.upload(file, dto, actor);
   }
 
-  @Get(':id/url')
-  @Roles(UserRole.DRIVER)
-  @ApiOperation({ summary: 'Obtenir l\'URL (signée) d\'un MediaAsset' })
-  getSignedUrl(@Param('id') id: string) {
-    return this.service.getSignedUrl(id);
-  }
-
-  @Get(':id')
-  @Roles(UserRole.DRIVER)
-  @ApiOperation({ summary: 'Détail d\'un MediaAsset' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
-  }
-
-  @Get()
-  @Roles(UserRole.MANAGER)
-  @ApiOperation({ summary: 'Lister les MediaAssets (filtrés par entité)' })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  findAll(
-    @Query() filters: MediaFiltersDto,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-  ) {
-    return this.service.findAll(filters, page, limit);
-  }
-
   // ─── Photo wrapper ────────────────────────────────────────────────────────
 
   @Post('photos')
@@ -77,7 +50,7 @@ export class MediaController {
     return this.service.createPhoto(dto, actor);
   }
 
-  // ─── Photo Mission ────────────────────────────────────────────────────────
+  // ─── Photo Mission (POST) ────────────────────────────────────────────────
 
   @Post('photo-missions')
   @Roles(UserRole.MANAGER)
@@ -85,26 +58,6 @@ export class MediaController {
   @ApiOperation({ summary: 'Créer une mission photo pour un chauffeur' })
   createPhotoMission(@Body() dto: CreatePhotoMissionDto, @CurrentUser() actor: User) {
     return this.service.createPhotoMission(dto, actor);
-  }
-
-  @Get('photo-missions')
-  @Roles(UserRole.MANAGER)
-  @ApiOperation({ summary: 'Lister les missions photo' })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  findPhotoMissions(
-    @Query() filters: PhotoMissionFiltersDto,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-  ) {
-    return this.service.findPhotoMissions(filters, page, limit);
-  }
-
-  @Get('photo-missions/:id')
-  @Roles(UserRole.MANAGER)
-  @ApiOperation({ summary: 'Détail d\'une mission photo' })
-  findPhotoMissionById(@Param('id') id: string) {
-    return this.service.findPhotoMissionById(id);
   }
 
   @Post('photo-missions/:id/submit')
@@ -125,5 +78,61 @@ export class MediaController {
   @ApiOperation({ summary: 'Valider une mission photo soumise' })
   validatePhotoMission(@Param('id') id: string, @CurrentUser() actor: User) {
     return this.service.validatePhotoMission(id, actor);
+  }
+
+  // ─── GET routes — ordre critique (G-03) ───────────────────────────────────
+  // Règle : routes statiques ET préfixes fixes AVANT /:id
+  // Sinon Express match "photo-missions" comme `:id` sur GET /:id.
+
+  /** GET /media/photo-missions — doit être avant GET /:id */
+  @Get('photo-missions')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Lister les missions photo' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  findPhotoMissions(
+    @Query() filters: PhotoMissionFiltersDto,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.service.findPhotoMissions(filters, page, limit);
+  }
+
+  /** GET /media/photo-missions/:id — doit être avant GET /:id */
+  @Get('photo-missions/:id')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Détail d\'une mission photo' })
+  findPhotoMissionById(@Param('id') id: string) {
+    return this.service.findPhotoMissionById(id);
+  }
+
+  /** GET /media/:id/url — doit être avant GET /:id pour éviter collision */
+  @Get(':id/url')
+  @Roles(UserRole.DRIVER)
+  @ApiOperation({ summary: 'Obtenir l\'URL (signée) d\'un MediaAsset' })
+  getSignedUrl(@Param('id') id: string) {
+    return this.service.getSignedUrl(id);
+  }
+
+  /** GET /media/:id — route paramétrique générique (toujours après les routes statiques) */
+  @Get(':id')
+  @Roles(UserRole.DRIVER)
+  @ApiOperation({ summary: 'Détail d\'un MediaAsset' })
+  findById(@Param('id') id: string) {
+    return this.service.findById(id);
+  }
+
+  /** GET /media — liste (après les routes paramétriques pour cohérence) */
+  @Get()
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Lister les MediaAssets (filtrés par entité)' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  findAll(
+    @Query() filters: MediaFiltersDto,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.service.findAll(filters, page, limit);
   }
 }

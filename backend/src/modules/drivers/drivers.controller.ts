@@ -2,10 +2,10 @@ import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   ParseIntPipe, DefaultValuePipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { User, UserRole, DriverStatus } from '@prisma/client';
 import { DriversService } from './drivers.service';
-import { CreateDriverDto, UpdateDriverDto, DriverFiltersDto, ValidateFieldDto } from './dto/driver.dto';
+import { CreateDriverDto, UpdateDriverDto, DriverFiltersDto, ValidateFieldDto, UpdateDriverStatusDto } from './dto/driver.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -52,11 +52,14 @@ export class DriversController {
     return this.service.update(id, dto);
   }
 
+  /** G-02 : status migré de @Query vers @Body avec DTO validé */
   @Patch(':id/status')
   @Roles(UserRole.SUPER_MANAGER)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Changer le statut d\'un chauffeur' })
-  updateStatus(@Param('id') id: string, @Query('status') status: DriverStatus) {
-    return this.service.updateStatus(id, status);
+  @ApiBody({ type: UpdateDriverStatusDto })
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateDriverStatusDto) {
+    return this.service.updateStatus(id, dto.status);
   }
 
   // ─── Gap 5 : Validation KYC ────────────────────────────────────────────────

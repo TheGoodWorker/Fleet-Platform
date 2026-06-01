@@ -1,11 +1,11 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
-  ParseIntPipe, DefaultValuePipe,
+  ParseIntPipe, DefaultValuePipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { UserRole, VehicleStatus } from '@prisma/client';
 import { VehiclesService } from './vehicles.service';
-import { CreateVehicleDto, UpdateVehicleDto, AssignManagerDto, VehicleFiltersDto } from './dto/vehicle.dto';
+import { CreateVehicleDto, UpdateVehicleDto, AssignManagerDto, VehicleFiltersDto, UpdateVehicleStatusDto } from './dto/vehicle.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -64,11 +64,14 @@ export class VehiclesController {
     return this.service.assignManager(id, dto);
   }
 
+  /** G-02 : status migré de @Query vers @Body avec DTO validé */
   @Patch(':id/status')
   @Roles(UserRole.SUPER_MANAGER)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Changer le statut du véhicule' })
-  updateStatus(@Param('id') id: string, @Query('status') status: VehicleStatus) {
-    return this.service.updateStatus(id, status);
+  @ApiBody({ type: UpdateVehicleStatusDto })
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateVehicleStatusDto) {
+    return this.service.updateStatus(id, dto.status);
   }
 
   @Delete(':id')

@@ -40,3 +40,10 @@ export class VehicleFiltersDto {
   @ApiPropertyOptional() @IsOptional() @IsString() managerId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() search?: string;
 }
+
+/** G-02 : statut via body (body → ValidationPipe, Swagger propre, génération Flutter correcte) */
+export class UpdateVehicleStatusDto {
+  @ApiProperty({ enum: VehicleStatus, description: 'Nouveau statut du véhicule' })
+  @IsEnum(VehicleStatus)
+  status: VehicleStatus;
+}

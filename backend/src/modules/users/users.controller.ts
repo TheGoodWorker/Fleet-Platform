@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
-  ParseIntPipe, DefaultValuePipe,
+  ParseIntPipe, DefaultValuePipe, ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
@@ -64,7 +64,7 @@ export class UsersController {
     @CurrentUser() user: User,
   ) {
     if (id !== user.id && user.role !== UserRole.ADMIN) {
-      throw new Error('Non autorisé');
+      throw new ForbiddenException('Non autorisé');
     }
     return this.service.changePassword(id, dto);
   }

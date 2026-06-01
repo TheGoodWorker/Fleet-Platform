@@ -26,6 +26,13 @@ export class DriverFiltersDto {
   @ApiPropertyOptional() @IsOptional() @IsString() search?: string;
 }
 
+/** G-02 : statut via body (body → ValidationPipe, Swagger propre, génération Flutter correcte) */
+export class UpdateDriverStatusDto {
+  @ApiProperty({ enum: DriverStatus, description: 'Nouveau statut du chauffeur' })
+  @IsEnum(DriverStatus)
+  status: DriverStatus;
+}
+
 export class ValidateFieldDto {
   @ApiPropertyOptional({ description: 'La visite à domicile a été effectuée' })
   @IsOptional() @IsBoolean() homeVisitDone?: boolean;
