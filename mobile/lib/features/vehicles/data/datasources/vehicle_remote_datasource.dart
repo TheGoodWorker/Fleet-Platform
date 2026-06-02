@@ -42,9 +42,15 @@ class VehicleRemoteDataSourceImpl implements VehicleRemoteDataSource {
 
       final body = parseResponseBody(response.data, context: 'VehicleDataSource');
       final rawData = (body['data'] as List?) ?? const <dynamic>[];
-      return rawData
-          .map((e) => VehicleModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return rawData.map((e) {
+        final item = e as Map<String, dynamic>;
+        try {
+          return VehicleModel.fromJson(item);
+        } catch (mapErr, mapSt) {
+          debugPrint('[VehicleDataSource] crash parsing item id=${item['id']} : $mapErr\n$mapSt');
+          rethrow;
+        }
+      }).toList();
 
     } on ApiException {
       // Les ApiException déjà typées (UnauthorizedException, etc.) remontent

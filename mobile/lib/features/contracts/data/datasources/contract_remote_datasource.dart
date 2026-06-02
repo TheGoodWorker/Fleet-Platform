@@ -42,9 +42,15 @@ class ContractRemoteDataSourceImpl implements ContractRemoteDataSource {
 
       final body = parseResponseBody(response.data, context: 'ContractDataSource');
       final rawData = (body['data'] as List?) ?? const <dynamic>[];
-      return rawData
-          .map((e) => ContractModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return rawData.map((e) {
+        final item = e as Map<String, dynamic>;
+        try {
+          return ContractModel.fromJson(item);
+        } catch (mapErr, mapSt) {
+          debugPrint('[ContractDataSource] crash parsing item id=${item['id']} : $mapErr\n$mapSt');
+          rethrow;
+        }
+      }).toList();
 
     } on ApiException {
       rethrow;

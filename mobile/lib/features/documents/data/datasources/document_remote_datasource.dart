@@ -48,9 +48,15 @@ class DocumentRemoteDataSourceImpl implements DocumentRemoteDataSource {
 
       final body = parseResponseBody(response.data, context: 'DocumentDataSource');
       final rawData = (body['data'] as List?) ?? const <dynamic>[];
-      return rawData
-          .map((e) => DocumentModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return rawData.map((e) {
+        final item = e as Map<String, dynamic>;
+        try {
+          return DocumentModel.fromJson(item);
+        } catch (mapErr, mapSt) {
+          debugPrint('[DocumentDataSource] crash parsing item id=${item['id']} : $mapErr\n$mapSt');
+          rethrow;
+        }
+      }).toList();
 
     } on ApiException {
       rethrow;

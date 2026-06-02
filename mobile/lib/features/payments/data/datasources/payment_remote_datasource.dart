@@ -59,9 +59,15 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
 
       final body = parseResponseBody(response.data, context: 'PaymentDataSource');
       final rawData = (body['data'] as List?) ?? const <dynamic>[];
-      return rawData
-          .map((e) => PaymentModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return rawData.map((e) {
+        final item = e as Map<String, dynamic>;
+        try {
+          return PaymentModel.fromJson(item);
+        } catch (mapErr, mapSt) {
+          debugPrint('[PaymentDataSource] crash parsing item id=${item['id']} : $mapErr\n$mapSt');
+          rethrow;
+        }
+      }).toList();
 
     } on ApiException {
       rethrow;

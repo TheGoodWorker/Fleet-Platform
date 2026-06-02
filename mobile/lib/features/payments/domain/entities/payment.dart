@@ -34,18 +34,19 @@ enum PaymentSource {
 
 enum PaymentStatus {
   pending,
-  confirmed,
+  confirmed, // maintenu pour compatibilité IHM — correspond à VALIDATED backend
   rejected;
 
+  // Le backend envoie 'VALIDATED' (pas 'CONFIRMED')
   String get value => switch (this) {
         PaymentStatus.pending => 'PENDING',
-        PaymentStatus.confirmed => 'CONFIRMED',
+        PaymentStatus.confirmed => 'VALIDATED',
         PaymentStatus.rejected => 'REJECTED',
       };
 
   String get label => switch (this) {
         PaymentStatus.pending => 'En attente',
-        PaymentStatus.confirmed => 'Confirmé',
+        PaymentStatus.confirmed => 'Validé',
         PaymentStatus.rejected => 'Rejeté',
       };
 
@@ -57,7 +58,8 @@ enum PaymentStatus {
 
   static PaymentStatus fromString(String value) => switch (value) {
         'PENDING' => PaymentStatus.pending,
-        'CONFIRMED' => PaymentStatus.confirmed,
+        // Le backend envoie VALIDATED ; CONFIRMED gardé pour compatibilité
+        'VALIDATED' || 'CONFIRMED' => PaymentStatus.confirmed,
         'REJECTED' => PaymentStatus.rejected,
         _ => PaymentStatus.pending,
       };

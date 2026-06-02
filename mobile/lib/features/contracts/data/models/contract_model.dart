@@ -51,7 +51,8 @@ class ContractModel extends Contract {
       id: json['id'] as String,
       type: ContractType.fromString(json['type'] as String),
       status: ContractStatus.fromString(json['status'] as String),
-      dailyAmount: (json['dailyAmount'] as num).toDouble(),
+      // Prisma Decimal est sérialisé en String par NestJS → double.parse est requis
+      dailyAmount: double.parse(json['dailyAmount'].toString()),
       targetDays: json['targetDays'] as int?,
       vehicleId: vehicle?['id'] as String? ?? '',
       vehiclePlate: vehicle?['plateNumber'] as String? ?? '',

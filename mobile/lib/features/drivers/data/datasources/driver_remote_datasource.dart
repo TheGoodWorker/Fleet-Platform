@@ -42,9 +42,15 @@ class DriverRemoteDataSourceImpl implements DriverRemoteDataSource {
 
       final body = parseResponseBody(response.data, context: 'DriverDataSource');
       final rawData = (body['data'] as List?) ?? const <dynamic>[];
-      return rawData
-          .map((e) => DriverModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return rawData.map((e) {
+        final item = e as Map<String, dynamic>;
+        try {
+          return DriverModel.fromJson(item);
+        } catch (mapErr, mapSt) {
+          debugPrint('[DriverDataSource] crash parsing item id=${item['id']} : $mapErr\n$mapSt');
+          rethrow;
+        }
+      }).toList();
 
     } on ApiException {
       rethrow;

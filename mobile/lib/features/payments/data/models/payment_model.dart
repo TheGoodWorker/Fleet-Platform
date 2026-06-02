@@ -32,7 +32,8 @@ class PaymentModel extends Payment {
 
     return PaymentModel(
       id: json['id'] as String,
-      amount: (json['amount'] as num).toDouble(),
+      // Prisma Decimal est sérialisé en String par NestJS → double.parse est requis
+      amount: double.parse(json['amount'].toString()),
       source: PaymentSource.fromString(json['source'] as String),
       paidAt: DateTime.parse(json['paidAt'] as String),
       status: PaymentStatus.fromString(json['status'] as String),

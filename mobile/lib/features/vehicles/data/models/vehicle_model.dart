@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../../domain/entities/vehicle.dart';
 
 /// Modèle VehicleDto — correspondance directe avec la réponse API
@@ -17,6 +19,8 @@ class VehicleModel extends Vehicle {
   });
 
   factory VehicleModel.fromJson(Map<String, dynamic> json) {
+    debugPrint('[VehicleModel] parsing id=${json['id']} plate=${json['plateNumber']}');
+
     final owner = json['owner'] as Map<String, dynamic>?;
     final currentDriver = json['currentDriver'] as Map<String, dynamic>?;
     final currentContract = json['currentContract'] as Map<String, dynamic>?;
@@ -37,10 +41,12 @@ class VehicleModel extends Vehicle {
       plateNumber: json['plateNumber'] as String,
       brand: json['brand'] as String,
       model: json['model'] as String,
-      year: json['year'] as int,
-      color: json['color'] as String,
-      fuelType: json['fuelType'] as String,
-      status: VehicleStatus.fromString(json['status'] as String),
+      // year / color / fuelType sont nullable dans le schéma Prisma (Int? / String?)
+      // → on fournit des valeurs par défaut pour éviter un TypeError sur null
+      year: (json['year'] as int?) ?? 0,
+      color: (json['color'] as String?) ?? '',
+      fuelType: (json['fuelType'] as String?) ?? '',
+      status: VehicleStatus.fromString((json['status'] as String?) ?? 'AVAILABLE'),
       ownerName: owner?['name'] as String?,
       driverName: driverName,
       currentContractType: currentContract?['type'] as String?,

@@ -29,38 +29,72 @@ enum ContractType {
 }
 
 enum ContractStatus {
-  pending,
-  active,
-  suspended,
-  closed;
+  // ── Valeurs réelles du backend ─────────────────────────────────────────────
+  draft,             // DRAFT
+  pendingApproval,   // PENDING_APPROVAL
+  active,            // ACTIVE
+  suspended,         // SUSPENDED
+  immobilized,       // IMMOBILIZED
+  blocked,           // BLOCKED
+  terminated,        // TERMINATED
+  completed,         // COMPLETED
+  vehicleRepossessed, // VEHICLE_REPOSSESSED
+  // ── Valeurs legacy maintenues pour compatibilité IHM ──────────────────────
+  pending,           // ancien alias de draft
+  closed;            // ancien alias de completed
 
   String get value => switch (this) {
-        ContractStatus.pending => 'PENDING',
+        ContractStatus.draft => 'DRAFT',
+        ContractStatus.pendingApproval => 'PENDING_APPROVAL',
         ContractStatus.active => 'ACTIVE',
         ContractStatus.suspended => 'SUSPENDED',
-        ContractStatus.closed => 'CLOSED',
+        ContractStatus.immobilized => 'IMMOBILIZED',
+        ContractStatus.blocked => 'BLOCKED',
+        ContractStatus.terminated => 'TERMINATED',
+        ContractStatus.completed => 'COMPLETED',
+        ContractStatus.vehicleRepossessed => 'VEHICLE_REPOSSESSED',
+        ContractStatus.pending => 'DRAFT',
+        ContractStatus.closed => 'COMPLETED',
       };
 
   String get label => switch (this) {
-        ContractStatus.pending => 'En attente',
+        ContractStatus.draft || ContractStatus.pending => 'Brouillon',
+        ContractStatus.pendingApproval => "En attente d'approbation",
         ContractStatus.active => 'Actif',
         ContractStatus.suspended => 'Suspendu',
-        ContractStatus.closed => 'Clôturé',
+        ContractStatus.immobilized => 'Immobilisé',
+        ContractStatus.blocked => 'Bloqué',
+        ContractStatus.terminated => 'Résilié',
+        ContractStatus.completed || ContractStatus.closed => 'Terminé',
+        ContractStatus.vehicleRepossessed => 'Véhicule récupéré',
       };
 
   Color get color => switch (this) {
-        ContractStatus.pending => AppColors.warning,
+        ContractStatus.draft || ContractStatus.pending => AppColors.textSecondary,
+        ContractStatus.pendingApproval => AppColors.warning,
         ContractStatus.active => AppColors.success,
         ContractStatus.suspended => AppColors.error,
-        ContractStatus.closed => AppColors.textSecondary,
+        ContractStatus.immobilized => AppColors.warning,
+        ContractStatus.blocked => AppColors.error,
+        ContractStatus.terminated => AppColors.textPrimary,
+        ContractStatus.completed || ContractStatus.closed => AppColors.info,
+        ContractStatus.vehicleRepossessed => AppColors.roleOwner,
       };
 
   static ContractStatus fromString(String value) => switch (value) {
-        'PENDING' => ContractStatus.pending,
+        'DRAFT' => ContractStatus.draft,
+        'PENDING_APPROVAL' => ContractStatus.pendingApproval,
         'ACTIVE' => ContractStatus.active,
         'SUSPENDED' => ContractStatus.suspended,
+        'IMMOBILIZED' => ContractStatus.immobilized,
+        'BLOCKED' => ContractStatus.blocked,
+        'TERMINATED' => ContractStatus.terminated,
+        'COMPLETED' => ContractStatus.completed,
+        'VEHICLE_REPOSSESSED' => ContractStatus.vehicleRepossessed,
+        // legacy
+        'PENDING' => ContractStatus.pending,
         'CLOSED' => ContractStatus.closed,
-        _ => ContractStatus.pending,
+        _ => ContractStatus.draft,
       };
 }
 
