@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../../../core/api/api_exception.dart';
+import '../../../../core/api/response_parser.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../models/payment_model.dart';
 
@@ -53,18 +55,22 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
       final statusCode = response.statusCode ?? 0;
       if (statusCode == 401) throw const UnauthorizedException();
       if (statusCode == 403) throw const ForbiddenException();
-      if (statusCode < 200 || statusCode >= 300) {
-        throw ServerException(statusCode);
-      }
+      if (statusCode < 200 || statusCode >= 300) throw ServerException(statusCode);
 
-      final body = response.data as Map<String, dynamic>? ?? {};
+      final body = parseResponseBody(response.data, context: 'PaymentDataSource');
       final rawData = (body['data'] as List?) ?? const <dynamic>[];
       return rawData
           .map((e) => PaymentModel.fromJson(e as Map<String, dynamic>))
           .toList();
+
+    } on ApiException {
+      rethrow;
     } on DioException catch (e) {
-      if (e.error is ApiException) rethrow;
+      if (e.error is ApiException) throw e.error as ApiException;
       throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[PaymentDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
     }
   }
 
@@ -89,14 +95,18 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
           'amount': amount,
           'source': source,
           'paidAt': paidAt,
-          if (reference != null && reference.isNotEmpty)
-            'reference': reference,
+          if (reference != null && reference.isNotEmpty) 'reference': reference,
           if (notes != null && notes.isNotEmpty) 'notes': notes,
         },
       );
+    } on ApiException {
+      rethrow;
     } on DioException catch (e) {
-      if (e.error is ApiException) rethrow;
+      if (e.error is ApiException) throw e.error as ApiException;
       throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[PaymentDataSource] Erreur inattendue (create) : $e\n$st');
+      throw UnknownException(e.toString());
     }
   }
 

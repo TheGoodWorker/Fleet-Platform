@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../../../core/api/api_exception.dart';
+import '../../../../core/api/response_parser.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../models/contract_model.dart';
 
@@ -36,18 +38,22 @@ class ContractRemoteDataSourceImpl implements ContractRemoteDataSource {
       final statusCode = response.statusCode ?? 0;
       if (statusCode == 401) throw const UnauthorizedException();
       if (statusCode == 403) throw const ForbiddenException();
-      if (statusCode < 200 || statusCode >= 300) {
-        throw ServerException(statusCode);
-      }
+      if (statusCode < 200 || statusCode >= 300) throw ServerException(statusCode);
 
-      final body = response.data as Map<String, dynamic>? ?? {};
+      final body = parseResponseBody(response.data, context: 'ContractDataSource');
       final rawData = (body['data'] as List?) ?? const <dynamic>[];
       return rawData
           .map((e) => ContractModel.fromJson(e as Map<String, dynamic>))
           .toList();
+
+    } on ApiException {
+      rethrow;
     } on DioException catch (e) {
-      if (e.error is ApiException) rethrow;
+      if (e.error is ApiException) throw e.error as ApiException;
       throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[ContractDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
     }
   }
 

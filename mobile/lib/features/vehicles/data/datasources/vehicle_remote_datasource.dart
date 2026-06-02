@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../../../core/api/api_exception.dart';
+import '../../../../core/api/response_parser.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../models/vehicle_model.dart';
 
@@ -33,23 +35,30 @@ class VehicleRemoteDataSourceImpl implements VehicleRemoteDataSource {
         },
       );
 
-      // Vérification explicite du code HTTP — nécessaire car validateStatus
-      // par défaut ne couvre pas les cas où Dio reçoit un 4xx sans lever.
       final statusCode = response.statusCode ?? 0;
       if (statusCode == 401) throw const UnauthorizedException();
       if (statusCode == 403) throw const ForbiddenException();
-      if (statusCode < 200 || statusCode >= 300) {
-        throw ServerException(statusCode);
-      }
+      if (statusCode < 200 || statusCode >= 300) throw ServerException(statusCode);
 
-      final body = response.data as Map<String, dynamic>? ?? {};
+      final body = parseResponseBody(response.data, context: 'VehicleDataSource');
       final rawData = (body['data'] as List?) ?? const <dynamic>[];
       return rawData
           .map((e) => VehicleModel.fromJson(e as Map<String, dynamic>))
           .toList();
+
+    } on ApiException {
+      // Les ApiException déjà typées (UnauthorizedException, etc.) remontent
+      // directement au cubit sans modification.
+      rethrow;
     } on DioException catch (e) {
-      if (e.error is ApiException) rethrow;
+      // Phase 8-E : extraire l'ApiException encapsulée par AuthInterceptor plutôt
+      // que de relancer le DioException wrapper — sinon le cubit ne peut pas
+      // le capturer avec `on ApiException catch`.
+      if (e.error is ApiException) throw e.error as ApiException;
       throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[VehicleDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
     }
   }
 
