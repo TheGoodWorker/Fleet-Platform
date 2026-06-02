@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsEnum, IsOptional, IsInt, IsUUID, Min, Max } from 'class-validator';
 import { VehicleStatus } from '@prisma/client';
+import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 export class CreateVehicleDto {
   @ApiProperty({ example: 'DK 1234 AB' }) @IsString() plateNumber: string;
@@ -34,7 +35,7 @@ export class AssignManagerDto {
   @ApiPropertyOptional() @IsOptional() @IsString() reason?: string;
 }
 
-export class VehicleFiltersDto {
+export class VehicleFiltersDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: VehicleStatus }) @IsOptional() @IsEnum(VehicleStatus) status?: VehicleStatus;
   @ApiPropertyOptional() @IsOptional() @IsString() ownerId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() managerId?: string;

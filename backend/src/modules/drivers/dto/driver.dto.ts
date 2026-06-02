@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsEnum, IsOptional, IsArray, IsUUID, IsBoolean, IsNumber } from 'class-validator';
 import { DriverStatus } from '@prisma/client';
+import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 export class CreateDriverDto {
   @ApiProperty({ description: 'ID du User (compte téléphone) à lier au chauffeur' })
@@ -21,7 +22,7 @@ export class UpdateDriverDto {
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() familyContacts?: string[];
 }
 
-export class DriverFiltersDto {
+export class DriverFiltersDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: DriverStatus }) @IsOptional() @IsEnum(DriverStatus) status?: DriverStatus;
   @ApiPropertyOptional() @IsOptional() @IsString() search?: string;
 }

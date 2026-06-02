@@ -3,6 +3,7 @@ import {
   IsBoolean, IsDateString, IsEnum, IsOptional, IsString, IsUUID,
 } from 'class-validator';
 import { DocumentEntityType, DocumentStatus, DocumentType } from '@prisma/client';
+import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 // ─── Création ──────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export class UpdateDocumentDto {
 
 // ─── Filtres ───────────────────────────────────────────────────────────────
 
-export class DocumentFiltersDto {
+export class DocumentFiltersDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: DocumentEntityType })
   @IsOptional() @IsEnum(DocumentEntityType) entityType?: DocumentEntityType;
 

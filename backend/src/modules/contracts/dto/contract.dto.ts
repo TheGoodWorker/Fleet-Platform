@@ -3,6 +3,7 @@ import {
   IsString, IsEnum, IsOptional, IsNumber, IsInt, IsUUID, Min, IsBoolean,
 } from 'class-validator';
 import { ContractType, MgmtFeeType, MgmtFeeBase, OwnerPaymentFrequency } from '@prisma/client';
+import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 export class CreateContractDto {
   @ApiProperty({ enum: ContractType }) @IsEnum(ContractType) type: ContractType;
@@ -64,7 +65,7 @@ export class UpdateContractDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
-export class ContractFiltersDto {
+export class ContractFiltersDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsEnum(ContractType) type?: ContractType;
   @ApiPropertyOptional() @IsOptional() @IsString() vehicleId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() driverId?: string;

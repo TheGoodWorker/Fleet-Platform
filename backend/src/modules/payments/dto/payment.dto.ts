@@ -4,6 +4,7 @@ import {
   IsDateString, Min, IsBoolean,
 } from 'class-validator';
 import { PaymentSource } from '@prisma/client';
+import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 export class CreatePaymentDto {
   @ApiProperty({ description: 'ID du contrat' }) @IsUUID() contractId: string;
@@ -29,7 +30,7 @@ export class RejectPaymentDto {
   @ApiProperty({ description: 'Motif du rejet' }) @IsString() reason: string;
 }
 
-export class PaymentFiltersDto {
+export class PaymentFiltersDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() contractId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() vehicleId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() driverId?: string;
