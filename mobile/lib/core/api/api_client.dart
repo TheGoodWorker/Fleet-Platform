@@ -39,7 +39,8 @@ class ApiClient {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      validateStatus: (status) => status != null && status < 500,
+      // validateStatus par défaut : seuls les 2xx sont des succès.
+      // Les 4xx (401/403) déclenchent DioExceptionType.badResponse → AuthInterceptor.onError
     );
 
     // Dio séparé pour l'appel refresh (même baseUrl, sans auth interceptor)

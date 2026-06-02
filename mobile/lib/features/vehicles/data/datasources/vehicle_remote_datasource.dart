@@ -33,9 +33,18 @@ class VehicleRemoteDataSourceImpl implements VehicleRemoteDataSource {
         },
       );
 
-      final body = response.data as Map<String, dynamic>;
-      final data = body['data'] as List<dynamic>;
-      return data
+      // Vérification explicite du code HTTP — nécessaire car validateStatus
+      // par défaut ne couvre pas les cas où Dio reçoit un 4xx sans lever.
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode == 401) throw const UnauthorizedException();
+      if (statusCode == 403) throw const ForbiddenException();
+      if (statusCode < 200 || statusCode >= 300) {
+        throw ServerException(statusCode);
+      }
+
+      final body = response.data as Map<String, dynamic>? ?? {};
+      final rawData = (body['data'] as List?) ?? const <dynamic>[];
+      return rawData
           .map((e) => VehicleModel.fromJson(e as Map<String, dynamic>))
           .toList();
     } on DioException catch (e) {

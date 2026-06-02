@@ -26,6 +26,12 @@ class SecureTokenStorage implements TokenStorage {
               iOptions: IOSOptions(
                 accessibility: KeychainAccessibility.first_unlock,
               ),
+              // Web : IndexedDB via Web Crypto API
+              // dbName et publicKey stables évitent les incohérences entre rechargements
+              webOptions: WebOptions(
+                dbName: 'fleet_secure_storage',
+                publicKey: 'fleet_secure_key',
+              ),
             );
 
   final FlutterSecureStorage _storage;

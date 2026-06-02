@@ -9,6 +9,7 @@ import '../../features/auth/domain/repositories/auth_repository.dart';
 import '../../features/auth/domain/usecases/login_usecase.dart';
 import '../../features/auth/domain/usecases/logout_usecase.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
+import '../../features/auth/presentation/bloc/auth_event.dart';
 
 import '../../features/vehicles/data/datasources/vehicle_remote_datasource.dart';
 import '../../features/vehicles/data/repositories/vehicle_repository_impl.dart';
@@ -49,10 +50,12 @@ Future<void> configureDependencies() async {
     () => ApiClient(
       tokenStorage: sl<TokenStorage>(),
       onLogout: () async {
-        if (sl.isRegistered<AuthBloc>()) {
-          // Le BLoC gère la déconnexion via son propre flux
-        }
+        // 1. Effacer les tokens du stockage sécurisé
         await sl<TokenStorage>().clearTokens();
+        // 2. Signaler l'AuthBloc → redirige vers /login via GoRouter
+        if (sl.isRegistered<AuthBloc>()) {
+          sl<AuthBloc>().add(const AuthLogoutRequested());
+        }
       },
     ),
   );
