@@ -1,14 +1,24 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/presentation/bloc/auth_bloc.dart';
 import '../features/auth/presentation/bloc/auth_state.dart';
 import '../features/auth/presentation/pages/login_page.dart';
+import '../features/contracts/presentation/cubit/contracts_cubit.dart';
+import '../features/contracts/presentation/pages/contracts_page.dart';
 import '../features/dashboard/presentation/pages/dashboard_page.dart';
-import '../features/vehicles/presentation/pages/vehicles_placeholder_page.dart';
-import '../features/drivers/presentation/pages/drivers_placeholder_page.dart';
+import '../features/documents/presentation/cubit/documents_cubit.dart';
+import '../features/documents/presentation/pages/documents_page.dart';
+import '../features/drivers/presentation/cubit/drivers_cubit.dart';
+import '../features/drivers/presentation/pages/drivers_page.dart';
+import '../features/payments/presentation/cubit/payments_cubit.dart';
+import '../features/payments/presentation/pages/payments_page.dart';
+import '../features/vehicles/presentation/cubit/vehicles_cubit.dart';
+import '../features/vehicles/presentation/pages/vehicles_page.dart';
+import '../core/di/injection.dart';
 import '../shared/widgets/loading_view.dart';
 
 /// Routes Fleet Platform
@@ -64,35 +74,41 @@ GoRouter createRouter(AuthBloc authBloc) {
           GoRoute(
             path: AppRoutes.vehicles,
             name: 'vehicles',
-            builder: (context, state) => const VehiclesPlaceholderPage(),
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<VehiclesCubit>(),
+              child: const VehiclesPage(),
+            ),
           ),
           GoRoute(
             path: AppRoutes.drivers,
             name: 'drivers',
-            builder: (context, state) => const DriversPlaceholderPage(),
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<DriversCubit>(),
+              child: const DriversPage(),
+            ),
           ),
           GoRoute(
             path: AppRoutes.contracts,
             name: 'contracts',
-            builder: (context, state) => const _ComingSoonPage(
-              title: 'Contrats',
-              icon: Icons.description_outlined,
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<ContractsCubit>(),
+              child: const ContractsPage(),
             ),
           ),
           GoRoute(
             path: AppRoutes.payments,
             name: 'payments',
-            builder: (context, state) => const _ComingSoonPage(
-              title: 'Paiements',
-              icon: Icons.payment_outlined,
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<PaymentsCubit>(),
+              child: const PaymentsPage(),
             ),
           ),
           GoRoute(
             path: AppRoutes.documents,
             name: 'documents',
-            builder: (context, state) => const _ComingSoonPage(
-              title: 'Documents',
-              icon: Icons.folder_outlined,
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<DocumentsCubit>(),
+              child: const DocumentsPage(),
             ),
           ),
           GoRoute(
