@@ -1,6 +1,6 @@
 import 'dotenv/config'; // charge backend/.env avant tout accès à process.env
 import {
-  PrismaClient, UserRole, PermissionModule,
+  PrismaClient, Prisma, UserRole, PermissionModule,
   VehicleStatus, DriverStatus, ContractType, ContractStatus,
   PaymentSource, PaymentStatus,
   DocumentType, DocumentStatus, DocumentEntityType,
@@ -550,7 +550,8 @@ async function main() {
   ];
 
   // Upsert contracts — stocker les IDs pour les paiements
-  const contracts: { id: string; contractNumber: string; vehicleId: string; driverId: string | null }[] = [];
+  // contractNumber est String? (nullable) dans le schéma Prisma → le select retourne string | null
+  const contracts: { id: string; contractNumber: string | null; vehicleId: string; driverId: string | null }[] = [];
   for (const c of contractsData) {
     const contract = await prisma.contract.upsert({
       where: { contractNumber: c.contractNumber },
@@ -601,7 +602,7 @@ async function main() {
     new Date('2025-06-06'), new Date('2025-07-06'),
   ];
 
-  const paymentsData: Parameters<typeof prisma.payment.createMany>[0]['data'] = [];
+  const paymentsData: Prisma.PaymentCreateManyInput[] = [];
   for (let ci = 0; ci < 8; ci++) {
     const contract = contracts[ci];
     const count = paymentDist[ci];
@@ -659,7 +660,7 @@ async function main() {
     past:         new Date('2024-01-01'),      // validFrom pour documents anciens
   };
 
-  const documentsData: Parameters<typeof prisma.document.createMany>[0]['data'] = [];
+  const documentsData: Prisma.DocumentCreateManyInput[] = [];
 
   // ── 15 documents véhicule ───────────────────────────────────────────────────
   // Assurances pour les 8 véhicules ASSIGNED + quelques documents GRAY_CARD
