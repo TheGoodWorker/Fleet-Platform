@@ -1,3 +1,4 @@
+import 'dotenv/config' // charge DATABASE_URL depuis backend/.env pour le CLI Prisma
 import path from 'node:path'
 import type { PrismaConfig } from 'prisma'
 
