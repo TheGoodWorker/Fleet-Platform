@@ -1,3 +1,4 @@
+import '../../../../../core/utils/numeric_utils.dart';
 import '../../domain/entities/contract.dart';
 
 class ContractModel extends Contract {
@@ -51,8 +52,8 @@ class ContractModel extends Contract {
       id: json['id'] as String,
       type: ContractType.fromString(json['type'] as String),
       status: ContractStatus.fromString(json['status'] as String),
-      // Prisma Decimal est sérialisé en String par NestJS → double.parse est requis
-      dailyAmount: double.parse(json['dailyAmount'].toString()),
+      // Prisma Decimal peut être sérialisé en String, num ou objet {s,e,d}
+      dailyAmount: parseDouble(json['dailyAmount']),
       targetDays: json['targetDays'] as int?,
       vehicleId: vehicle?['id'] as String? ?? '',
       vehiclePlate: vehicle?['plateNumber'] as String? ?? '',

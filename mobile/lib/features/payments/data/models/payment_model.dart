@@ -1,3 +1,4 @@
+import '../../../../../core/utils/numeric_utils.dart';
 import '../../domain/entities/payment.dart';
 
 class PaymentModel extends Payment {
@@ -32,8 +33,8 @@ class PaymentModel extends Payment {
 
     return PaymentModel(
       id: json['id'] as String,
-      // Prisma Decimal est sérialisé en String par NestJS → double.parse est requis
-      amount: double.parse(json['amount'].toString()),
+      // Prisma Decimal peut être sérialisé en String, num ou objet {s,e,d}
+      amount: parseDouble(json['amount']),
       source: PaymentSource.fromString(json['source'] as String),
       paidAt: DateTime.parse(json['paidAt'] as String),
       status: PaymentStatus.fromString(json['status'] as String),
