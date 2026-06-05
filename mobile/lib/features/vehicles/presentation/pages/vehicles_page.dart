@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../shared/theme/app_theme.dart';
 import '../../../../shared/widgets/empty_state.dart';
@@ -52,6 +53,13 @@ class _VehiclesPageState extends State<VehiclesPage> {
       appBar: AppBar(
         title: const Text('Véhicules'),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/vehicles/new'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        tooltip: 'Nouveau véhicule',
+        child: const Icon(Icons.add),
+      ),
       body: Column(
         children: [
           _FilterChipsRow(
@@ -97,7 +105,7 @@ class _VehiclesPageState extends State<VehiclesPage> {
                           final vehicle = vehicles[index];
                           return VehicleCard(
                             vehicle: vehicle,
-                            onTap: () {},
+                            onTap: () => context.push('/vehicles/${vehicle.id}'),
                           );
                         },
                       ),

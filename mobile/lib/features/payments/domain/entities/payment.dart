@@ -74,6 +74,9 @@ class Payment extends Equatable {
     required this.status,
     this.reference,
     this.notes,
+    this.contractId,
+    this.vehicleId,
+    this.driverId,
     this.vehiclePlate,
     this.driverName,
     this.contractType,
@@ -86,6 +89,9 @@ class Payment extends Equatable {
   final PaymentStatus status;
   final String? reference;
   final String? notes;
+  final String? contractId;
+  final String? vehicleId;
+  final String? driverId;
   final String? vehiclePlate;
   final String? driverName;
   final String? contractType;
@@ -99,6 +105,9 @@ class Payment extends Equatable {
         status,
         reference,
         notes,
+        contractId,
+        vehicleId,
+        driverId,
         vehiclePlate,
         driverName,
         contractType,

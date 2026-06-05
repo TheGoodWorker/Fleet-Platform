@@ -19,4 +19,6 @@ abstract class PaymentRepository {
     String? reference,
     String? notes,
   });
+
+  Future<Payment> getPaymentById(String id);
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../shared/theme/app_theme.dart';
 import '../../../../shared/widgets/empty_state.dart';
@@ -50,6 +51,11 @@ class _DriversPageState extends State<DriversPage> {
       appBar: AppBar(
         title: const Text('Chauffeurs'),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/drivers/new'),
+        tooltip: 'Ajouter un chauffeur',
+        child: const Icon(Icons.add),
+      ),
       body: Column(
         children: [
           _FilterChipsRow(
@@ -95,7 +101,7 @@ class _DriversPageState extends State<DriversPage> {
                           final driver = drivers[index];
                           return DriverCard(
                             driver: driver,
-                            onTap: () {},
+                            onTap: () => context.push('/drivers/${driver.id}'),
                           );
                         },
                       ),

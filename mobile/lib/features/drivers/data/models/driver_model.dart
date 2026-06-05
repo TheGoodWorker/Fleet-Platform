@@ -9,6 +9,8 @@ class DriverModel extends Driver {
     required super.lastName,
     required super.idCardNumber,
     required super.licenseNumber,
+    super.address,
+    super.scoreValue,
     super.phone,
     super.email,
   });
@@ -23,6 +25,8 @@ class DriverModel extends Driver {
       lastName: user['lastName'] as String? ?? '',
       idCardNumber: json['idCardNumber'] as String? ?? '',
       licenseNumber: json['licenseNumber'] as String? ?? '',
+      address: json['address'] as String?,
+      scoreValue: json['scoreValue'] != null ? (json['scoreValue'] as num).toDouble() : null,
       phone: user['phone'] as String?,
       email: user['email'] as String?,
     );

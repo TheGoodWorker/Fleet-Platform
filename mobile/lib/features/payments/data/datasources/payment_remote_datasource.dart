@@ -25,6 +25,8 @@ abstract class PaymentRemoteDataSource {
     String? reference,
     String? notes,
   });
+
+  Future<PaymentModel> getPaymentById(String id);
 }
 
 class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
@@ -112,6 +114,24 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
       throw _handleDioError(e);
     } catch (e, st) {
       debugPrint('[PaymentDataSource] Erreur inattendue (create) : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<PaymentModel> getPaymentById(String id) async {
+    try {
+      final response = await _dio.get(ApiConstants.paymentById(id));
+      final body = parseResponseBody(response.data, context: 'PaymentDataSource.getById');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return PaymentModel.fromJson(obj);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[PaymentDataSource] Erreur inattendue : $e\n$st');
       throw UnknownException(e.toString());
     }
   }

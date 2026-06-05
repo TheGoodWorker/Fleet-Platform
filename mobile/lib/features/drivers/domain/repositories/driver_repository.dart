@@ -8,4 +8,15 @@ abstract class DriverRepository {
     int page = 1,
     int limit = 20,
   });
+  Future<Driver> getDriverById(String id);
+  Future<Driver> createDriver({
+    required String userId,
+    String? idCardNumber,
+    String? licenseNumber,
+    String? address,
+    String? emergencyContact,
+  });
+  Future<Driver> updateDriver(String id, Map<String, dynamic> data);
+  Future<void> validateKyc(String id);
+  Future<void> validateField(String id);
 }

@@ -7,16 +7,26 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/bloc/auth_bloc.dart';
 import '../features/auth/presentation/bloc/auth_state.dart';
 import '../features/auth/presentation/pages/login_page.dart';
+import '../features/contracts/presentation/cubit/contract_detail_cubit.dart';
 import '../features/contracts/presentation/cubit/contracts_cubit.dart';
+import '../features/contracts/presentation/pages/contract_detail_page.dart';
+import '../features/contracts/presentation/pages/contract_form_page.dart';
 import '../features/contracts/presentation/pages/contracts_page.dart';
 import '../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../features/documents/presentation/cubit/documents_cubit.dart';
 import '../features/documents/presentation/pages/documents_page.dart';
+import '../features/drivers/presentation/cubit/driver_detail_cubit.dart';
 import '../features/drivers/presentation/cubit/drivers_cubit.dart';
+import '../features/drivers/presentation/pages/driver_detail_page.dart';
+import '../features/drivers/presentation/pages/driver_form_page.dart';
 import '../features/drivers/presentation/pages/drivers_page.dart';
 import '../features/payments/presentation/cubit/payments_cubit.dart';
+import '../features/payments/presentation/pages/payment_detail_page.dart';
 import '../features/payments/presentation/pages/payments_page.dart';
+import '../features/vehicles/presentation/cubit/vehicle_detail_cubit.dart';
 import '../features/vehicles/presentation/cubit/vehicles_cubit.dart';
+import '../features/vehicles/presentation/pages/vehicle_detail_page.dart';
+import '../features/vehicles/presentation/pages/vehicle_form_page.dart';
 import '../features/vehicles/presentation/pages/vehicles_page.dart';
 import '../core/di/injection.dart';
 import '../shared/widgets/loading_view.dart';
@@ -33,6 +43,15 @@ class AppRoutes {
   static const String documents = '/documents';
   static const String owner = '/owner';
   static const String notifications = '/notifications';
+
+  static String vehicleDetail(String id) => '/vehicles/$id';
+  static const String vehicleNew = '/vehicles/new';
+  static String vehicleEdit(String id) => '/vehicles/$id/edit';
+  static String driverDetail(String id) => '/drivers/$id';
+  static const String driverNew = '/drivers/new';
+  static String contractDetail(String id) => '/contracts/$id';
+  static const String contractNew = '/contracts/new';
+  static String paymentDetail(String id) => '/payments/$id';
 }
 
 GoRouter createRouter(AuthBloc authBloc) {
@@ -80,12 +99,61 @@ GoRouter createRouter(AuthBloc authBloc) {
             ),
           ),
           GoRoute(
+            path: '/vehicles/new',
+            name: 'vehicleNew',
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<VehicleDetailCubit>(),
+              child: const VehicleFormPage(),
+            ),
+          ),
+          GoRoute(
+            path: '/vehicles/:id',
+            name: 'vehicleDetail',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return BlocProvider(
+                create: (_) => sl<VehicleDetailCubit>()..load(id),
+                child: VehicleDetailPage(vehicleId: id),
+              );
+            },
+          ),
+          GoRoute(
+            path: '/vehicles/:id/edit',
+            name: 'vehicleEdit',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return BlocProvider(
+                create: (_) => sl<VehicleDetailCubit>()..load(id),
+                child: VehicleFormPage(vehicleId: id),
+              );
+            },
+          ),
+          GoRoute(
             path: AppRoutes.drivers,
             name: 'drivers',
             builder: (context, state) => BlocProvider(
               create: (_) => sl<DriversCubit>(),
               child: const DriversPage(),
             ),
+          ),
+          GoRoute(
+            path: '/drivers/new',
+            name: 'driverNew',
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<DriverDetailCubit>(),
+              child: const DriverFormPage(),
+            ),
+          ),
+          GoRoute(
+            path: '/drivers/:id',
+            name: 'driverDetail',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return BlocProvider(
+                create: (_) => sl<DriverDetailCubit>()..load(id),
+                child: DriverDetailPage(driverId: id),
+              );
+            },
           ),
           GoRoute(
             path: AppRoutes.contracts,
@@ -96,12 +164,42 @@ GoRouter createRouter(AuthBloc authBloc) {
             ),
           ),
           GoRoute(
+            path: '/contracts/new',
+            name: 'contractNew',
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<ContractDetailCubit>(),
+              child: const ContractFormPage(),
+            ),
+          ),
+          GoRoute(
+            path: '/contracts/:id',
+            name: 'contractDetail',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return BlocProvider(
+                create: (_) => sl<ContractDetailCubit>()..load(id),
+                child: ContractDetailPage(contractId: id),
+              );
+            },
+          ),
+          GoRoute(
             path: AppRoutes.payments,
             name: 'payments',
             builder: (context, state) => BlocProvider(
               create: (_) => sl<PaymentsCubit>(),
               child: const PaymentsPage(),
             ),
+          ),
+          GoRoute(
+            path: '/payments/:id',
+            name: 'paymentDetail',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return BlocProvider.value(
+                value: sl<PaymentsCubit>(),
+                child: PaymentDetailPage(paymentId: id),
+              );
+            },
           ),
           GoRoute(
             path: AppRoutes.documents,

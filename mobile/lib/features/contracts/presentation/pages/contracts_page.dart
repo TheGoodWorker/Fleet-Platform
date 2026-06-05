@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../shared/theme/app_theme.dart';
 import '../../../../shared/widgets/empty_state.dart';
@@ -38,6 +39,11 @@ class _ContractsPageState extends State<ContractsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Contrats'),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/contracts/new'),
+        tooltip: 'Nouveau contrat',
+        child: const Icon(Icons.add),
       ),
       body: Column(
         children: [
@@ -80,7 +86,7 @@ class _ContractsPageState extends State<ContractsPage> {
                         itemBuilder: (context, index) {
                           return ContractCard(
                             contract: contracts[index],
-                            onTap: () {},
+                            onTap: () => context.push('/contracts/${contracts[index].id}'),
                           );
                         },
                       ),

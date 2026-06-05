@@ -32,6 +32,9 @@ class ApiConstants {
   // ─── Contracts ───────────────────────────────────────────────────────────
   static const String contracts = '/contracts';
   static String contractById(String id) => '/contracts/$id';
+  static String contractActivate(String id) => '/contracts/$id/activate';
+  static String contractSuspend(String id) => '/contracts/$id/suspend';
+  static String contractClose(String id) => '/contracts/$id/close';
 
   // ─── Payments ────────────────────────────────────────────────────────────
   static const String payments = '/payments';

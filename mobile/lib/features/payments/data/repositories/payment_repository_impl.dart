@@ -46,4 +46,9 @@ class PaymentRepositoryImpl implements PaymentRepository {
       notes: notes,
     );
   }
+
+  @override
+  Future<Payment> getPaymentById(String id) async {
+    return _remote.getPaymentById(id);
+  }
 }

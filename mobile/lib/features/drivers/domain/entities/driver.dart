@@ -58,6 +58,8 @@ class Driver extends Equatable {
     required this.lastName,
     required this.idCardNumber,
     required this.licenseNumber,
+    this.address,
+    this.scoreValue,
     this.phone,
     this.email,
   });
@@ -68,6 +70,8 @@ class Driver extends Equatable {
   final String lastName;
   final String idCardNumber;
   final String licenseNumber;
+  final String? address;
+  final double? scoreValue;
   final String? phone;
   final String? email;
 
@@ -81,6 +85,8 @@ class Driver extends Equatable {
         lastName,
         idCardNumber,
         licenseNumber,
+        address,
+        scoreValue,
         phone,
         email,
       ];

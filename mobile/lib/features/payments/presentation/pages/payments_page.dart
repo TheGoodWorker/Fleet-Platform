@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../shared/permissions/permission_helper.dart';
 import '../../../../shared/theme/app_theme.dart';
@@ -172,7 +173,7 @@ class _PaymentsList extends StatelessWidget {
             itemBuilder: (context, index) {
               return PaymentCard(
                 payment: payments[index],
-                onTap: () {},
+                onTap: () => context.push('/payments/${payments[index].id}'),
               );
             },
           ),

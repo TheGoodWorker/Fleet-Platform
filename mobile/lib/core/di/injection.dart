@@ -14,16 +14,19 @@ import '../../features/auth/presentation/bloc/auth_event.dart';
 import '../../features/vehicles/data/datasources/vehicle_remote_datasource.dart';
 import '../../features/vehicles/data/repositories/vehicle_repository_impl.dart';
 import '../../features/vehicles/domain/repositories/vehicle_repository.dart';
+import '../../features/vehicles/presentation/cubit/vehicle_detail_cubit.dart';
 import '../../features/vehicles/presentation/cubit/vehicles_cubit.dart';
 
 import '../../features/drivers/data/datasources/driver_remote_datasource.dart';
 import '../../features/drivers/data/repositories/driver_repository_impl.dart';
 import '../../features/drivers/domain/repositories/driver_repository.dart';
+import '../../features/drivers/presentation/cubit/driver_detail_cubit.dart';
 import '../../features/drivers/presentation/cubit/drivers_cubit.dart';
 
 import '../../features/contracts/data/datasources/contract_remote_datasource.dart';
 import '../../features/contracts/data/repositories/contract_repository_impl.dart';
 import '../../features/contracts/domain/repositories/contract_repository.dart';
+import '../../features/contracts/presentation/cubit/contract_detail_cubit.dart';
 import '../../features/contracts/presentation/cubit/contracts_cubit.dart';
 
 import '../../features/payments/data/datasources/payment_remote_datasource.dart';
@@ -109,6 +112,10 @@ Future<void> configureDependencies() async {
     () => VehiclesCubit(sl<VehicleRepository>()),
   );
 
+  sl.registerFactory<VehicleDetailCubit>(
+    () => VehicleDetailCubit(sl<VehicleRepository>()),
+  );
+
   // ─── Drivers — Data ────────────────────────────────────────────────────────
   sl.registerLazySingleton<DriverRemoteDataSource>(
     () => DriverRemoteDataSourceImpl(sl<Dio>()),
@@ -122,6 +129,10 @@ Future<void> configureDependencies() async {
     () => DriversCubit(sl<DriverRepository>()),
   );
 
+  sl.registerFactory<DriverDetailCubit>(
+    () => DriverDetailCubit(sl<DriverRepository>()),
+  );
+
   // ─── Contracts — Data ──────────────────────────────────────────────────────
   sl.registerLazySingleton<ContractRemoteDataSource>(
     () => ContractRemoteDataSourceImpl(sl<Dio>()),
@@ -133,6 +144,10 @@ Future<void> configureDependencies() async {
 
   sl.registerFactory<ContractsCubit>(
     () => ContractsCubit(sl<ContractRepository>()),
+  );
+
+  sl.registerFactory<ContractDetailCubit>(
+    () => ContractDetailCubit(sl<ContractRepository>()),
   );
 
   // ─── Payments — Data ───────────────────────────────────────────────────────

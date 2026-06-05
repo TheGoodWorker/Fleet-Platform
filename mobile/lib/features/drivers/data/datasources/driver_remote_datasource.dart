@@ -12,6 +12,17 @@ abstract class DriverRemoteDataSource {
     int page = 1,
     int limit = 20,
   });
+  Future<DriverModel> getDriverById(String id);
+  Future<DriverModel> createDriver({
+    required String userId,
+    String? idCardNumber,
+    String? licenseNumber,
+    String? address,
+    String? emergencyContact,
+  });
+  Future<DriverModel> updateDriver(String id, Map<String, dynamic> data);
+  Future<void> validateKyc(String id);
+  Future<void> validateField(String id);
 }
 
 class DriverRemoteDataSourceImpl implements DriverRemoteDataSource {
@@ -52,6 +63,134 @@ class DriverRemoteDataSourceImpl implements DriverRemoteDataSource {
         }
       }).toList();
 
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[DriverDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<DriverModel> getDriverById(String id) async {
+    try {
+      final response = await _dio.get(ApiConstants.driverById(id));
+
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode == 401) throw const UnauthorizedException();
+      if (statusCode == 403) throw const ForbiddenException();
+      if (statusCode < 200 || statusCode >= 300) throw ServerException(statusCode);
+
+      final body = parseResponseBody(response.data, context: 'DriverDataSource.getDriverById');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return DriverModel.fromJson(obj);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[DriverDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<DriverModel> createDriver({
+    required String userId,
+    String? idCardNumber,
+    String? licenseNumber,
+    String? address,
+    String? emergencyContact,
+  }) async {
+    try {
+      final response = await _dio.post(
+        ApiConstants.drivers,
+        data: {
+          'userId': userId,
+          if (idCardNumber != null) 'idCardNumber': idCardNumber,
+          if (licenseNumber != null) 'licenseNumber': licenseNumber,
+          if (address != null) 'address': address,
+          if (emergencyContact != null) 'emergencyContact': emergencyContact,
+        },
+      );
+
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode == 401) throw const UnauthorizedException();
+      if (statusCode == 403) throw const ForbiddenException();
+      if (statusCode < 200 || statusCode >= 300) throw ServerException(statusCode);
+
+      final body = parseResponseBody(response.data, context: 'DriverDataSource.createDriver');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return DriverModel.fromJson(obj);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[DriverDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<DriverModel> updateDriver(String id, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.patch(
+        ApiConstants.driverById(id),
+        data: data,
+      );
+
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode == 401) throw const UnauthorizedException();
+      if (statusCode == 403) throw const ForbiddenException();
+      if (statusCode < 200 || statusCode >= 300) throw ServerException(statusCode);
+
+      final body = parseResponseBody(response.data, context: 'DriverDataSource.updateDriver');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return DriverModel.fromJson(obj);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[DriverDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<void> validateKyc(String id) async {
+    try {
+      final response = await _dio.post(ApiConstants.driverValidateKyc(id));
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode == 401) throw const UnauthorizedException();
+      if (statusCode == 403) throw const ForbiddenException();
+      if (statusCode < 200 || statusCode >= 300) throw ServerException(statusCode);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[DriverDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<void> validateField(String id) async {
+    try {
+      final response = await _dio.post(ApiConstants.driverValidateField(id));
+      final statusCode = response.statusCode ?? 0;
+      if (statusCode == 401) throw const UnauthorizedException();
+      if (statusCode == 403) throw const ForbiddenException();
+      if (statusCode < 200 || statusCode >= 300) throw ServerException(statusCode);
     } on ApiException {
       rethrow;
     } on DioException catch (e) {

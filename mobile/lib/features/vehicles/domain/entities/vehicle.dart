@@ -68,6 +68,9 @@ class Vehicle extends Equatable {
     required this.color,
     required this.fuelType,
     required this.status,
+    this.vin,
+    this.transmission,
+    this.seats,
     this.ownerName,
     this.driverName,
     this.currentContractType,
@@ -81,6 +84,9 @@ class Vehicle extends Equatable {
   final String color;
   final String fuelType;
   final VehicleStatus status;
+  final String? vin;
+  final String? transmission;
+  final int? seats;
   final String? ownerName;
   final String? driverName;
   final String? currentContractType;
@@ -95,6 +101,9 @@ class Vehicle extends Equatable {
         color,
         fuelType,
         status,
+        vin,
+        transmission,
+        seats,
         ownerName,
         driverName,
         currentContractType,

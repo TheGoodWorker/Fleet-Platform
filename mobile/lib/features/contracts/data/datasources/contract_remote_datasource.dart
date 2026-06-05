@@ -12,6 +12,28 @@ abstract class ContractRemoteDataSource {
     int page = 1,
     int limit = 20,
   });
+
+  Future<ContractModel> getContractById(String id);
+
+  Future<ContractModel> createContract({
+    required String type,
+    required String vehicleId,
+    required String managerId,
+    String? driverId,
+    String? ownerId,
+    required double dailyAmount,
+    int? targetDays,
+    int? restDay,
+    double? simpleRentalMonthlyAmount,
+    String? ownerPaymentFrequency,
+    String? notes,
+  });
+
+  Future<ContractModel> activateContract(String id);
+
+  Future<ContractModel> suspendContract(String id);
+
+  Future<ContractModel> closeContract(String id);
 }
 
 class ContractRemoteDataSourceImpl implements ContractRemoteDataSource {
@@ -52,6 +74,131 @@ class ContractRemoteDataSourceImpl implements ContractRemoteDataSource {
         }
       }).toList();
 
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[ContractDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<ContractModel> getContractById(String id) async {
+    try {
+      final response = await _dio.get(ApiConstants.contractById(id));
+      final body = parseResponseBody(response.data,
+          context: 'ContractDataSource.getContractById');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return ContractModel.fromJson(obj);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[ContractDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<ContractModel> createContract({
+    required String type,
+    required String vehicleId,
+    required String managerId,
+    String? driverId,
+    String? ownerId,
+    required double dailyAmount,
+    int? targetDays,
+    int? restDay,
+    double? simpleRentalMonthlyAmount,
+    String? ownerPaymentFrequency,
+    String? notes,
+  }) async {
+    try {
+      final data = <String, dynamic>{
+        'type': type,
+        'vehicleId': vehicleId,
+        'managerId': managerId,
+        'dailyAmount': dailyAmount,
+        if (driverId != null) 'driverId': driverId,
+        if (ownerId != null) 'ownerId': ownerId,
+        if (targetDays != null) 'targetDays': targetDays,
+        if (restDay != null) 'restDay': restDay,
+        if (simpleRentalMonthlyAmount != null)
+          'simpleRentalMonthlyAmount': simpleRentalMonthlyAmount,
+        if (ownerPaymentFrequency != null)
+          'ownerPaymentFrequency': ownerPaymentFrequency,
+        if (notes != null) 'notes': notes,
+      };
+      final response = await _dio.post(ApiConstants.contracts, data: data);
+      final body = parseResponseBody(response.data,
+          context: 'ContractDataSource.createContract');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return ContractModel.fromJson(obj);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[ContractDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<ContractModel> activateContract(String id) async {
+    try {
+      final response =
+          await _dio.post('/contracts/$id/activate');
+      final body = parseResponseBody(response.data,
+          context: 'ContractDataSource.activateContract');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return ContractModel.fromJson(obj);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[ContractDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<ContractModel> suspendContract(String id) async {
+    try {
+      final response =
+          await _dio.post('/contracts/$id/suspend');
+      final body = parseResponseBody(response.data,
+          context: 'ContractDataSource.suspendContract');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return ContractModel.fromJson(obj);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e.error is ApiException) throw e.error as ApiException;
+      throw _handleDioError(e);
+    } catch (e, st) {
+      debugPrint('[ContractDataSource] Erreur inattendue : $e\n$st');
+      throw UnknownException(e.toString());
+    }
+  }
+
+  @override
+  Future<ContractModel> closeContract(String id) async {
+    try {
+      final response =
+          await _dio.post('/contracts/$id/close');
+      final body = parseResponseBody(response.data,
+          context: 'ContractDataSource.closeContract');
+      final obj = (body['data'] as Map<String, dynamic>?) ?? body;
+      return ContractModel.fromJson(obj);
     } on ApiException {
       rethrow;
     } on DioException catch (e) {

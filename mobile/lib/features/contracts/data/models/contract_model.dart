@@ -17,6 +17,15 @@ class ContractModel extends Contract {
     super.startDate,
     super.endDate,
     super.progressDays,
+    super.contractNumber,
+    super.validatedDays,
+    super.activatedAt,
+    super.kycValidated,
+    super.fieldValidated,
+    super.depositPaid,
+    super.contractSigned,
+    super.managerApproved,
+    super.adminApproved,
   });
 
   factory ContractModel.fromJson(Map<String, dynamic> json) {
@@ -64,6 +73,17 @@ class ContractModel extends Contract {
       startDate: startDate,
       endDate: endDate,
       progressDays: progressDays,
+      contractNumber: json['contractNumber'] as String?,
+      validatedDays: json['validatedDays'] as int?,
+      activatedAt: json['activatedAt'] != null
+          ? DateTime.tryParse(json['activatedAt'] as String)
+          : null,
+      kycValidated: json['kycValidated'] as bool?,
+      fieldValidated: json['fieldValidated'] as bool?,
+      depositPaid: json['depositPaid'] as bool?,
+      contractSigned: json['contractSigned'] as bool?,
+      managerApproved: json['managerApproved'] as bool?,
+      adminApproved: json['adminApproved'] as bool?,
     );
   }
 }

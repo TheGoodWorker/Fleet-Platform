@@ -15,4 +15,41 @@ class DriverRepositoryImpl implements DriverRepository {
   }) async {
     return _remote.getDrivers(status: status, page: page, limit: limit);
   }
+
+  @override
+  Future<Driver> getDriverById(String id) async {
+    return _remote.getDriverById(id);
+  }
+
+  @override
+  Future<Driver> createDriver({
+    required String userId,
+    String? idCardNumber,
+    String? licenseNumber,
+    String? address,
+    String? emergencyContact,
+  }) async {
+    return _remote.createDriver(
+      userId: userId,
+      idCardNumber: idCardNumber,
+      licenseNumber: licenseNumber,
+      address: address,
+      emergencyContact: emergencyContact,
+    );
+  }
+
+  @override
+  Future<Driver> updateDriver(String id, Map<String, dynamic> data) async {
+    return _remote.updateDriver(id, data);
+  }
+
+  @override
+  Future<void> validateKyc(String id) async {
+    return _remote.validateKyc(id);
+  }
+
+  @override
+  Future<void> validateField(String id) async {
+    return _remote.validateField(id);
+  }
 }

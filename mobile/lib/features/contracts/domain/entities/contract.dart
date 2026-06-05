@@ -114,6 +114,15 @@ class Contract extends Equatable {
     this.startDate,
     this.endDate,
     this.progressDays,
+    this.contractNumber,
+    this.validatedDays,
+    this.activatedAt,
+    this.kycValidated,
+    this.fieldValidated,
+    this.depositPaid,
+    this.contractSigned,
+    this.managerApproved,
+    this.adminApproved,
   });
 
   final String id;
@@ -134,6 +143,16 @@ class Contract extends Equatable {
   /// Calculé depuis la datasource à partir de startDate si non fourni.
   final int? progressDays;
 
+  final String? contractNumber;
+  final int? validatedDays;
+  final DateTime? activatedAt;
+  final bool? kycValidated;
+  final bool? fieldValidated;
+  final bool? depositPaid;
+  final bool? contractSigned;
+  final bool? managerApproved;
+  final bool? adminApproved;
+
   @override
   List<Object?> get props => [
         id,
@@ -150,5 +169,14 @@ class Contract extends Equatable {
         startDate,
         endDate,
         progressDays,
+        contractNumber,
+        validatedDays,
+        activatedAt,
+        kycValidated,
+        fieldValidated,
+        depositPaid,
+        contractSigned,
+        managerApproved,
+        adminApproved,
       ];
 }
