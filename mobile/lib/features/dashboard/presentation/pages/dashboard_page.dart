@@ -170,34 +170,51 @@ class _Body extends StatelessWidget {
         _WelcomeHeader(user: user),
         const SizedBox(height: 20),
 
-        // ── Hero card (revenus + flotte en bref) ──────────────────────────
+        // ── Hero card ─────────────────────────────────────────────────────
         _HeroCard(data: data),
         const SizedBox(height: 16),
+
+        // ── Attention requise (juste sous le résumé) ───────────────────────
+        if (data.alertCount > 0) ...[
+          _AlertsCard(data: data),
+          const SizedBox(height: 16),
+        ],
 
         // ── Bar chart — paiements par semaine ─────────────────────────────
         _WeeklyChart(data: data),
         const SizedBox(height: 16),
 
-        // ── Flotte + Chauffeurs (2 colonnes) ──────────────────────────────
+        // ── Flotte + Chauffeurs (2 colonnes, cliquables) ───────────────────
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _FleetCard(data: data)),
+            Expanded(
+              child: _FleetCard(
+                data: data,
+                onTap: () => context.push(AppRoutes.vehicles),
+              ),
+            ),
             const SizedBox(width: 12),
-            Expanded(child: _DriversCard(data: data)),
+            Expanded(
+              child: _DriversCard(
+                data: data,
+                onTap: () => context.push(AppRoutes.drivers),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 16),
 
-        // ── Contrats ──────────────────────────────────────────────────────
-        _ContractsCard(data: data),
+        // ── Contrats (cliquable) ───────────────────────────────────────────
+        _ContractsCard(
+          data: data,
+          onTap: () => context.push(AppRoutes.contracts),
+        ),
         const SizedBox(height: 16),
 
-        // ── Alertes ───────────────────────────────────────────────────────
-        if (data.alertCount > 0) ...[
-          _AlertsCard(data: data),
-          const SizedBox(height: 16),
-        ],
+        // ── Activité récente ───────────────────────────────────────────────
+        _RecentActivity(data: data),
+        const SizedBox(height: 16),
 
         // ── Actions rapides ───────────────────────────────────────────────
         _QuickActions(),
@@ -438,6 +455,42 @@ class _WeeklyChart extends StatelessWidget {
     final maxVal = weekly.reduce(max);
     final labels = ['S1', 'S2', 'S3', 'S4', 'S5'];
 
+    // ── Placeholder si aucun paiement ce mois ─────────────────────────────
+    if (maxVal == 0) {
+      return const _Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('Paiements mensuels',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700,
+                        color: _C.text)),
+                Spacer(),
+                Icon(Icons.bar_chart_outlined, color: _C.sub, size: 18),
+              ],
+            ),
+            SizedBox(height: 24),
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.bar_chart_outlined,
+                      size: 40, color: _C.border),
+                  SizedBox(height: 8),
+                  Text(
+                    'Aucun paiement enregistré ce mois',
+                    style: TextStyle(fontSize: 13, color: _C.sub),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 16),
+          ],
+        ),
+      );
+    }
+
     // Indice de la semaine courante
     final currentWeek = ((DateTime.now().day - 1) ~/ 7).clamp(0, 4);
 
@@ -559,12 +612,14 @@ class _WeeklyChart extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class _FleetCard extends StatelessWidget {
-  const _FleetCard({required this.data});
+  const _FleetCard({required this.data, this.onTap});
   final DashboardData data;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return _Card(
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -629,12 +684,14 @@ class _FleetCard extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class _DriversCard extends StatelessWidget {
-  const _DriversCard({required this.data});
+  const _DriversCard({required this.data, this.onTap});
   final DashboardData data;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return _Card(
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -693,12 +750,14 @@ class _DriversCard extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class _ContractsCard extends StatelessWidget {
-  const _ContractsCard({required this.data});
+  const _ContractsCard({required this.data, this.onTap});
   final DashboardData data;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return _Card(
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -950,6 +1009,136 @@ class _AlertRow extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Actions rapides
 // ═══════════════════════════════════════════════════════════════════════════════
+// Activité récente
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _RecentActivity extends StatelessWidget {
+  const _RecentActivity({required this.data});
+  final DashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <_ActivityItem>[
+      _ActivityItem(
+        icon: Icons.payments_outlined,
+        color: _C.green,
+        title:
+            '${data.paymentCountToday} paiement${data.paymentCountToday != 1 ? 's' : ''} aujourd\'hui',
+        sub: '${_fmt(data.paymentsToday)} FCFA encaissés',
+      ),
+      _ActivityItem(
+        icon: Icons.check_circle_outline,
+        color: _C.green,
+        title: '${data.paymentsValidated} paiement${data.paymentsValidated != 1 ? 's' : ''} validé${data.paymentsValidated != 1 ? 's' : ''}',
+        sub: 'ce mois · ${data.paymentsPending} en attente',
+      ),
+      if (data.contractsPending > 0)
+        _ActivityItem(
+          icon: Icons.pending_outlined,
+          color: _C.amber,
+          title:
+              '${data.contractsPending} contrat${data.contractsPending != 1 ? 's' : ''} en attente',
+          sub: 'À activer — checklist à compléter',
+        ),
+      if (data.driversPendingKyc > 0)
+        _ActivityItem(
+          icon: Icons.assignment_ind_outlined,
+          color: _C.amber,
+          title:
+              '${data.driversPendingKyc} chauffeur${data.driversPendingKyc != 1 ? 's' : ''} en validation',
+          sub: 'KYC ou visite terrain en attente',
+        ),
+      if (data.documentsExpired > 0)
+        _ActivityItem(
+          icon: Icons.assignment_late_outlined,
+          color: _C.red,
+          title:
+              '${data.documentsExpired} document${data.documentsExpired != 1 ? 's' : ''} expiré${data.documentsExpired != 1 ? 's' : ''}',
+          sub: 'Renouvellement urgent requis',
+        ),
+    ];
+
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Activité récente',
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w700, color: _C.text),
+          ),
+          const SizedBox(height: 12),
+          ...items.asMap().entries.expand((e) => [
+                _ActivityRow(item: e.value),
+                if (e.key < items.length - 1)
+                  const Divider(height: 1, color: _C.border),
+              ]),
+        ],
+      ),
+    );
+  }
+
+  String _fmt(double v) {
+    final n = v.toInt();
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(0)} k';
+    return '$n';
+  }
+}
+
+class _ActivityItem {
+  const _ActivityItem({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.sub,
+  });
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String sub;
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.item});
+  final _ActivityItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(
+              color: item.color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(item.icon, size: 16, color: item.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600,
+                        color: _C.text)),
+                Text(item.sub,
+                    style: const TextStyle(
+                        fontSize: 11, color: _C.sub)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 
 class _QuickActions extends StatelessWidget {
   static const _actions = [
@@ -1021,22 +1210,33 @@ class _QuickActions extends StatelessWidget {
 
 /// Wrapper carte blanche avec ombre
 class _Card extends StatelessWidget {
-  const _Card({required this.child});
+  const _Card({required this.child, this.onTap});
   final Widget child;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final box = Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: _C.card,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
-            color: _C.shadow, blurRadius: 8, offset: Offset(0, 2)),
+              color: _C.shadow, blurRadius: 8, offset: Offset(0, 2)),
         ],
       ),
       child: child,
+    );
+    if (onTap == null) return box;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: box,
+      ),
     );
   }
 }
