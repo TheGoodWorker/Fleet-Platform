@@ -41,6 +41,11 @@ import '../../features/documents/presentation/cubit/documents_cubit.dart';
 
 import '../datasources/form_options_datasource.dart';
 
+import '../../features/dashboard/data/datasources/dashboard_datasource.dart';
+import '../../features/dashboard/data/repositories/dashboard_repository_impl.dart';
+import '../../features/dashboard/domain/repositories/dashboard_repository.dart';
+import '../../features/dashboard/presentation/cubit/dashboard_cubit.dart';
+
 /// Service locator GetIt
 final GetIt sl = GetIt.instance;
 
@@ -181,5 +186,18 @@ Future<void> configureDependencies() async {
   // ─── Form Options (sélecteurs dans les formulaires) ───────────────────────
   sl.registerLazySingleton<FormOptionsDatasource>(
     () => FormOptionsDatasource(sl<Dio>()),
+  );
+
+  // ─── Dashboard — KPI ──────────────────────────────────────────────────────
+  sl.registerLazySingleton<DashboardDatasource>(
+    () => DashboardDatasource(sl<Dio>()),
+  );
+
+  sl.registerLazySingleton<DashboardRepository>(
+    () => DashboardRepositoryImpl(sl<DashboardDatasource>()),
+  );
+
+  sl.registerFactory<DashboardCubit>(
+    () => DashboardCubit(sl<DashboardRepository>()),
   );
 }
