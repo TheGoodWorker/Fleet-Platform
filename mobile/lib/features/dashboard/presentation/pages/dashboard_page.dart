@@ -1,3 +1,5 @@
+import 'dart:math' show max;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -8,11 +10,28 @@ import '../../../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../../../features/auth/presentation/bloc/auth_event.dart';
 import '../../../../features/auth/presentation/bloc/auth_state.dart';
 import '../../../../navigation/app_router.dart';
-import '../../../../shared/theme/app_theme.dart';
 import '../cubit/dashboard_cubit.dart';
 import '../cubit/dashboard_state.dart';
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+// ── Palette dashboard ─────────────────────────────────────────────────────────
+// Indépendante du thème global pour ne pas casser les autres modules.
+class _C {
+  static const bg = Color(0xFFF3F4F6);
+  static const card = Colors.white;
+  static const green = Color(0xFF059669);
+  static const greenLight = Color(0xFFD1FAE5);
+  static const amber = Color(0xFFD97706);
+  static const red = Color(0xFFDC2626);
+  static const blue = Color(0xFF2563EB);
+  static const text = Color(0xFF111827);
+  static const sub = Color(0xFF6B7280);
+  static const border = Color(0xFFE5E7EB);
+  static const shadow = Color(0x0A000000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Entry point
+// ═══════════════════════════════════════════════════════════════════════════════
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -21,403 +40,584 @@ class DashboardPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => sl<DashboardCubit>()..load(),
-      child: const _DashboardView(),
+      child: const _Shell(),
     );
   }
 }
 
-// ── Main view ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Shell (AppBar + body)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-class _DashboardView extends StatelessWidget {
-  const _DashboardView();
+class _Shell extends StatelessWidget {
+  const _Shell();
 
   @override
   Widget build(BuildContext context) {
-    final authState = context.watch<AuthBloc>().state;
-    final user = authState is AuthAuthenticated ? authState.user : null;
-
+    final user = _user(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
-      appBar: _buildAppBar(context, user),
-      body: RefreshIndicator(
-        color: AppColors.primary,
-        onRefresh: () => context.read<DashboardCubit>().refresh(),
-        child: BlocBuilder<DashboardCubit, DashboardState>(
-          builder: (context, state) => switch (state) {
-            DashboardInitial() || DashboardLoading() =>
-              _buildLoadingBody(user),
-            DashboardError(:final message) =>
-              _buildErrorBody(context, user, message),
-            DashboardLoaded(:final data) =>
-              _buildBody(context, user, data),
-          },
-        ),
-      ),
-    );
-  }
-
-  AppBar _buildAppBar(BuildContext context, User? user) {
-    return AppBar(
-      backgroundColor: AppColors.primary,
-      foregroundColor: Colors.white,
-      elevation: 0,
-      title: const Text(
-        'Fleet Platform',
-        style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
-      ),
-      actions: [
-        BlocBuilder<DashboardCubit, DashboardState>(
-          builder: (ctx, state) => IconButton(
-            icon: state is DashboardLoading
-                ? const SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.refresh_outlined, color: Colors.white),
-            onPressed: state is DashboardLoading
-                ? null
-                : () => ctx.read<DashboardCubit>().refresh(),
-          ),
-        ),
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Colors.white),
-          onSelected: (v) {
-            if (v == 'logout') {
-              context.read<AuthBloc>().add(const AuthLogoutRequested());
-            }
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(
-              value: 'logout',
-              child: Row(children: [
-                Icon(Icons.logout, size: 18, color: Colors.red),
-                SizedBox(width: 8),
-                Text('Déconnexion', style: TextStyle(color: Colors.red)),
-              ]),
+      backgroundColor: _C.bg,
+      appBar: AppBar(
+        backgroundColor: _C.card,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: _C.green,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.local_shipping, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Fleet',
+              style: TextStyle(
+                fontSize: 17, fontWeight: FontWeight.w800,
+                color: _C.text, letterSpacing: -0.3,
+              ),
+            ),
+            const Text(
+              'Platform',
+              style: TextStyle(
+                fontSize: 17, fontWeight: FontWeight.w400,
+                color: _C.sub,
+              ),
             ),
           ],
         ),
-      ],
-    );
-  }
-
-  // ── Loading skeleton ────────────────────────────────────────────────────────
-  Widget _buildLoadingBody(User? user) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
-      children: [
-        _HeaderBanner(user: user),
-        const SizedBox(height: 16),
-        _skel(160), const SizedBox(height: 12),
-        _skel(120), const SizedBox(height: 12),
-        _skel(140), const SizedBox(height: 12),
-        _skel(110),
-      ],
-    );
-  }
-
-  Widget _skel(double h) => Container(
-    height: h,
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.6),
-      borderRadius: BorderRadius.circular(14),
-    ),
-  );
-
-  // ── Error ───────────────────────────────────────────────────────────────────
-  Widget _buildErrorBody(BuildContext context, User? user, String message) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
-      children: [
-        _HeaderBanner(user: user),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.errorLight,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.error),
+        actions: [
+          BlocBuilder<DashboardCubit, DashboardState>(
+            builder: (ctx, s) => IconButton(
+              icon: s is DashboardLoading
+                  ? const SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: _C.green))
+                  : const Icon(Icons.refresh_rounded, color: _C.sub, size: 20),
+              onPressed: s is DashboardLoading
+                  ? null
+                  : () => ctx.read<DashboardCubit>().refresh(),
+            ),
           ),
-          child: Row(
-            children: [
-              const Icon(Icons.error_outline, color: AppColors.error),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(message,
-                    style: const TextStyle(color: AppColors.error)),
+          PopupMenuButton<String>(
+            icon: CircleAvatar(
+              radius: 14,
+              backgroundColor: _C.greenLight,
+              child: Text(
+                user?.initials ?? '?',
+                style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: _C.green),
               ),
-              TextButton(
-                onPressed: () => context.read<DashboardCubit>().load(),
-                child: const Text('Réessayer'),
+            ),
+            onSelected: (v) {
+              if (v == 'logout') {
+                context.read<AuthBloc>().add(const AuthLogoutRequested());
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'logout',
+                child: Row(children: [
+                  Icon(Icons.logout, size: 16, color: _C.red),
+                  SizedBox(width: 8),
+                  Text('Déconnexion', style: TextStyle(color: _C.red)),
+                ]),
               ),
             ],
           ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: RefreshIndicator(
+        color: _C.green,
+        onRefresh: () => context.read<DashboardCubit>().refresh(),
+        child: BlocBuilder<DashboardCubit, DashboardState>(
+          builder: (context, state) => switch (state) {
+            DashboardInitial() || DashboardLoading() => _Skeleton(user: user),
+            DashboardError(:final message) => _ErrorBody(message: message),
+            DashboardLoaded(:final data) => _Body(user: user, data: data),
+          },
         ),
-        const SizedBox(height: 16),
-        const _QuickActionsSection(data: DashboardData.empty),
-      ],
+      ),
     );
   }
 
-  // ── Full dashboard ──────────────────────────────────────────────────────────
-  Widget _buildBody(BuildContext context, User? user, DashboardData data) {
+  User? _user(BuildContext context) {
+    final s = context.watch<AuthBloc>().state;
+    return s is AuthAuthenticated ? s.user : null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Body complet
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _Body extends StatelessWidget {
+  const _Body({required this.user, required this.data});
+  final User? user;
+  final DashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
       children: [
-        // ── 0. Greeting banner ────────────────────────────────────────────
-        _HeaderBanner(user: user),
+        // ── Welcome header ────────────────────────────────────────────────
+        _WelcomeHeader(user: user),
+        const SizedBox(height: 20),
+
+        // ── Hero card (revenus + flotte en bref) ──────────────────────────
+        _HeroCard(data: data),
         const SizedBox(height: 16),
 
-        // ── 1. Résumé exécutif ────────────────────────────────────────────
-        _ExecSummary(data: data),
-        const SizedBox(height: 12),
+        // ── Bar chart — paiements par semaine ─────────────────────────────
+        _WeeklyChart(data: data),
+        const SizedBox(height: 16),
 
-        // ── 2. Alertes ────────────────────────────────────────────────────
-        _AlertsSection(data: data),
-        const SizedBox(height: 12),
+        // ── Flotte + Chauffeurs (2 colonnes) ──────────────────────────────
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _FleetCard(data: data)),
+            const SizedBox(width: 12),
+            Expanded(child: _DriversCard(data: data)),
+          ],
+        ),
+        const SizedBox(height: 16),
 
-        // ── 3. État de la flotte ──────────────────────────────────────────
-        _FleetStatusSection(data: data),
-        const SizedBox(height: 12),
+        // ── Contrats ──────────────────────────────────────────────────────
+        _ContractsCard(data: data),
+        const SizedBox(height: 16),
 
-        // ── 4. État des chauffeurs ────────────────────────────────────────
-        _DriverStatusSection(data: data),
-        const SizedBox(height: 12),
+        // ── Alertes ───────────────────────────────────────────────────────
+        if (data.alertCount > 0) ...[
+          _AlertsCard(data: data),
+          const SizedBox(height: 16),
+        ],
 
-        // ── 5. Finances ───────────────────────────────────────────────────
-        _FinancesSection(data: data),
-        const SizedBox(height: 12),
-
-        // ── 6. Actions rapides ────────────────────────────────────────────
-        _QuickActionsSection(data: data),
+        // ── Actions rapides ───────────────────────────────────────────────
+        _QuickActions(),
       ],
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 0 — Greeting banner
+// Welcome header
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class _HeaderBanner extends StatelessWidget {
-  const _HeaderBanner({this.user});
+class _WelcomeHeader extends StatelessWidget {
+  const _WelcomeHeader({this.user});
   final User? user;
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     const months = [
-      'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
-      'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'
+      'janv.','févr.','mars','avr.','mai','juin',
+      'juil.','août','sept.','oct.','nov.','déc.'
     ];
     final date = '${now.day} ${months[now.month - 1]} ${now.year}';
-    final greeting = _greeting(now.hour);
-    final name = user != null
-        ? user!.firstName
-        : 'Manager';
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A56DB), Color(0xFF1E429F)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$greeting, $name 👋',
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              RichText(
+                text: TextSpan(
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
+                      fontSize: 22, color: _C.text, height: 1.2),
                   children: [
-                    const Icon(Icons.calendar_today_outlined,
-                        size: 12, color: Colors.white70),
-                    const SizedBox(width: 4),
-                    Text(
-                      date,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 12),
+                    const TextSpan(
+                      text: 'Bonjour, ',
+                      style: TextStyle(fontWeight: FontWeight.w400),
                     ),
-                    if (user != null) ...[
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          user!.role.label,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 11,
-                              fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
+                    TextSpan(
+                      text: user?.firstName ?? 'Manager',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 4),
+              Text(date,
+                  style: const TextStyle(fontSize: 13, color: _C.sub)),
+            ],
           ),
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: Colors.white.withValues(alpha: 0.2),
-            child: Text(
-              user?.initials ?? '?',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16),
-            ),
+        ),
+        // Date chip
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: _C.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _C.border),
           ),
-        ],
-      ),
+          child: Row(
+            children: [
+              const Icon(Icons.calendar_today_outlined, size: 13, color: _C.sub),
+              const SizedBox(width: 4),
+              Text(
+                user?.role.label ?? '',
+                style: const TextStyle(fontSize: 12, color: _C.sub,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
-  }
-
-  String _greeting(int hour) {
-    if (hour < 12) return 'Bonjour';
-    if (hour < 18) return 'Bon après-midi';
-    return 'Bonsoir';
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 1 — Résumé exécutif
+// Hero card — gradient vert
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class _ExecSummary extends StatelessWidget {
-  const _ExecSummary({required this.data});
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({required this.data});
   final DashboardData data;
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      title: 'RÉSUMÉ EXÉCUTIF',
-      icon: Icons.dashboard_outlined,
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 1.5,
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF059669), Color(0xFF064E3B)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0xFF059669).withValues(alpha: 0.35), // ignore: prefer_const_constructors
+            blurRadius: 20, offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _HeroKpi(
-            value: '${data.vehiclesAssignedOrInService}',
-            label: 'Véhicules\nen service',
-            icon: Icons.local_shipping_outlined,
-            color: AppColors.primary,
-            sub: 'sur ${data.vehiclesTotal} total',
+          // Top row
+          Row(
+            children: [
+              const Text(
+                'Revenus du mois',
+                style: TextStyle(
+                  color: Colors.white70, fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(children: [
+                  Icon(Icons.trending_up, size: 13, color: Colors.white),
+                  SizedBox(width: 4),
+                  Text('Ce mois',
+                      style: TextStyle(color: Colors.white, fontSize: 11)),
+                ]),
+              ),
+            ],
           ),
-          _HeroKpi(
-            value: '${data.driversActive}',
-            label: 'Chauffeurs\nactifs',
-            icon: Icons.person_pin_outlined,
-            color: AppColors.success,
-            sub: 'sur ${data.driversTotal} total',
+          const SizedBox(height: 12),
+
+          // Big amount
+          Text(
+            '${_fmtFull(data.paymentsThisMonth)} F',
+            style: const TextStyle(
+              color: Colors.white, fontSize: 30,
+              fontWeight: FontWeight.w800, letterSpacing: -0.5,
+            ),
           ),
-          _HeroKpi(
-            value: '${data.contractsActive}',
-            label: 'Contrats\nactifs',
-            icon: Icons.description_outlined,
-            color: const Color(0xFF7E3AF2),
-            sub: '${data.contractsPending} en attente',
+          Text(
+            "dont ${_fmtFull(data.paymentsToday)} F aujourd'hui"
+            '  ·  ${data.paymentCountToday} paiement${data.paymentCountToday > 1 ? 's' : ''}',
+            style: const TextStyle(color: Colors.white60, fontSize: 12),
           ),
-          _HeroKpi(
-            value: _fmtAmount(data.paymentsThisMonth),
-            label: 'Revenus\ndu mois',
-            icon: Icons.trending_up_outlined,
-            color: const Color(0xFF057A55),
-            sub: 'F CFA',
+
+          const SizedBox(height: 20),
+          const Divider(color: Colors.white24, height: 1),
+          const SizedBox(height: 16),
+
+          // Bottom 3 KPIs
+          Row(
+            children: [
+              _HeroStat('${data.vehiclesAssignedOrInService}',
+                  'Véhicules actifs', Icons.directions_car_outlined),
+              _HeroStatDivider(),
+              _HeroStat('${data.driversActive}',
+                  'Chauffeurs actifs', Icons.person_outline),
+              _HeroStatDivider(),
+              _HeroStat('${data.contractsActive}',
+                  'Contrats actifs', Icons.description_outlined),
+            ],
           ),
         ],
       ),
     );
   }
 
-  String _fmtAmount(double v) {
+  String _fmtFull(double v) {
     final n = v.toInt();
-    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
-    if (n >= 1000) return '${(n / 1000).toStringAsFixed(0)}k';
-    return '$n';
+    final s = n.toString();
+    final b = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(' ');
+      b.write(s[i]);
+    }
+    return b.toString();
   }
 }
 
-class _HeroKpi extends StatelessWidget {
-  const _HeroKpi({
-    required this.value,
-    required this.label,
-    required this.icon,
-    required this.color,
-    this.sub,
-  });
+class _HeroStat extends StatelessWidget {
+  const _HeroStat(this.value, this.label, this.icon);
   final String value;
   final String label;
   final IconData icon;
-  final Color color;
-  final String? sub;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+    return Expanded(
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 13, color: Colors.white60),
+              const SizedBox(width: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white, fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 10),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _HeroStatDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) =>
+      Container(width: 1, height: 36, color: Colors.white.withValues(alpha: 0.12));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Bar chart — paiements par semaine
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _WeeklyChart extends StatelessWidget {
+  const _WeeklyChart({required this.data});
+  final DashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final weekly = data.weeklyPayments;
+    final maxVal = weekly.reduce(max);
+    final labels = ['S1', 'S2', 'S3', 'S4', 'S5'];
+
+    // Indice de la semaine courante
+    final currentWeek = ((DateTime.now().day - 1) ~/ 7).clamp(0, 4);
+
+    return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: color),
-              const Spacer(),
-              Text(
-                value,
+              const Text(
+                'Paiements mensuels',
                 style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: color,
-                  height: 1,
+                  fontSize: 14, fontWeight: FontWeight.w700, color: _C.text),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _C.greenLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Ce mois',
+                  style: TextStyle(
+                      fontSize: 11, color: _C.green,
+                      fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
-          const Spacer(),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-              height: 1.3,
+          const SizedBox(height: 20),
+
+          SizedBox(
+            height: 110,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(5, (i) {
+                final v = weekly[i];
+                final ratio = maxVal > 0 ? v / maxVal : 0.0;
+                final barH = (ratio * 80).clamp(4.0, 80.0);
+                final isActive = i == currentWeek;
+                final hasData = v > 0;
+
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        // Valeur au-dessus si c'est la semaine active
+                        if (isActive && hasData) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _C.green,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              _fmtK(v),
+                              style: const TextStyle(
+                                color: Colors.white, fontSize: 9,
+                                fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                        ] else
+                          const SizedBox(height: 20),
+
+                        // Barre
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeOutCubic,
+                          height: barH,
+                          decoration: BoxDecoration(
+                            color: isActive
+                                ? _C.green
+                                : hasData
+                                    ? _C.green.withValues(alpha: 0.3)
+                                    : _C.border,
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(6),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          labels[i],
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: isActive
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            color: isActive ? _C.green : _C.sub,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
             ),
           ),
-          if (sub != null)
-            Text(
-              sub!,
+        ],
+      ),
+    );
+  }
+
+  String _fmtK(double v) {
+    if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(0)}k';
+    return v.toInt().toString();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Flotte (petite carte)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _FleetCard extends StatelessWidget {
+  const _FleetCard({required this.data});
+  final DashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.directions_car_outlined,
+                  size: 15, color: _C.sub),
+              SizedBox(width: 4),
+              Text(
+                'Flotte',
+                style: TextStyle(
+                    fontSize: 12, color: _C.sub,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Total centré
+          Center(
+            child: Text(
+              '${data.vehiclesTotal}',
               style: const TextStyle(
-                  fontSize: 10, color: AppColors.textSecondary),
+                fontSize: 36, fontWeight: FontWeight.w800,
+                color: _C.text, height: 1,
+              ),
             ),
+          ),
+          const Center(
+            child: Text(
+              'véhicules',
+              style: TextStyle(fontSize: 12, color: _C.sub),
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // Mini stacked bar
+          _MiniStackedBar(segments: [
+            _Seg(data.vehiclesAssignedOrInService, _C.green),
+            _Seg(data.vehiclesAvailable, const Color(0xFF6EE7B7)),
+            _Seg(data.vehiclesImmobilized, const Color(0xFFFCD34D)),
+          ], total: data.vehiclesTotal),
+
+          const SizedBox(height: 10),
+          _LegendRow('Actifs', data.vehiclesAssignedOrInService,
+              _C.green),
+          const SizedBox(height: 4),
+          _LegendRow('Disponibles', data.vehiclesAvailable,
+              const Color(0xFF6EE7B7)),
+          const SizedBox(height: 4),
+          _LegendRow('Indisponibles', data.vehiclesImmobilized,
+              const Color(0xFFFCD34D)),
         ],
       ),
     );
@@ -425,168 +625,321 @@ class _HeroKpi extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 2 — Alertes
+// Chauffeurs (petite carte)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class _AlertsSection extends StatelessWidget {
-  const _AlertsSection({required this.data});
+class _DriversCard extends StatelessWidget {
+  const _DriversCard({required this.data});
   final DashboardData data;
 
   @override
   Widget build(BuildContext context) {
-    if (data.alertCount == 0) {
-      return _SectionCard(
-        title: 'ATTENTION REQUISE',
-        icon: Icons.notifications_outlined,
-        badge: 0,
-        badgeColor: AppColors.success,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-          child: const Row(
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
             children: [
-              Icon(Icons.check_circle_outline,
-                  color: AppColors.success, size: 20),
-              SizedBox(width: 10),
+              Icon(Icons.people_outlined, size: 15, color: _C.sub),
+              SizedBox(width: 4),
               Text(
-                'Aucune alerte — tout est en ordre ✓',
+                'Chauffeurs',
                 style: TextStyle(
-                  color: AppColors.success,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
+                    fontSize: 12, color: _C.sub,
+                    fontWeight: FontWeight.w600),
               ),
             ],
           ),
-        ),
-      );
-    }
+          const SizedBox(height: 12),
 
-    final alerts = <_AlertItem>[];
-    if (data.documentsExpired > 0) {
-      alerts.add(_AlertItem(
-        icon: Icons.assignment_late_outlined,
-        color: AppColors.error,
-        label: '${data.documentsExpired} document${data.documentsExpired > 1 ? 's' : ''} expiré${data.documentsExpired > 1 ? 's' : ''}',
-        sublabel: 'Renouvellement urgent',
-        route: AppRoutes.documents,
-        severity: _Severity.critical,
-      ));
-    }
-    if (data.documentsExpiringSoon > 0) {
-      alerts.add(_AlertItem(
-        icon: Icons.timer_outlined,
-        color: AppColors.warning,
-        label: '${data.documentsExpiringSoon} document${data.documentsExpiringSoon > 1 ? 's expirent' : ' expire'} bientôt',
-        sublabel: 'À renouveler dans 30 jours',
-        route: AppRoutes.documents,
-        severity: _Severity.warning,
-      ));
-    }
-    if (data.vehiclesWithoutDriver > 0) {
-      alerts.add(_AlertItem(
-        icon: Icons.person_off_outlined,
-        color: AppColors.warning,
-        label: '${data.vehiclesWithoutDriver} véhicule${data.vehiclesWithoutDriver > 1 ? 's' : ''} sans chauffeur',
-        sublabel: 'Contrat actif sans conducteur assigné',
-        route: AppRoutes.vehicles,
-        severity: _Severity.warning,
-      ));
-    }
-    if (data.vehiclesWithoutActiveContract > 0) {
-      alerts.add(_AlertItem(
-        icon: Icons.directions_car_outlined,
-        color: AppColors.textSecondary,
-        label: '${data.vehiclesWithoutActiveContract} véhicule${data.vehiclesWithoutActiveContract > 1 ? 's' : ''} disponible${data.vehiclesWithoutActiveContract > 1 ? 's' : ''}',
-        sublabel: 'Non affectés à un contrat',
-        route: AppRoutes.vehicles,
-        severity: _Severity.info,
-      ));
-    }
+          Center(
+            child: Text(
+              '${data.driversTotal}',
+              style: const TextStyle(
+                fontSize: 36, fontWeight: FontWeight.w800,
+                color: _C.text, height: 1,
+              ),
+            ),
+          ),
+          const Center(
+            child: Text(
+              'chauffeurs',
+              style: TextStyle(fontSize: 12, color: _C.sub),
+            ),
+          ),
 
-    return _SectionCard(
-      title: 'ATTENTION REQUISE',
-      icon: Icons.notifications_active_outlined,
-      badge: data.alertCount,
-      badgeColor: data.documentsExpired > 0 ? AppColors.error : AppColors.warning,
-      child: Column(
-        children: alerts.asMap().entries.map((e) {
-          final isLast = e.key == alerts.length - 1;
-          return Column(
-            children: [
-              _AlertRow(item: e.value),
-              if (!isLast)
-                const Divider(height: 1, color: AppColors.border),
-            ],
-          );
-        }).toList(),
+          const SizedBox(height: 14),
+
+          _MiniStackedBar(segments: [
+            _Seg(data.driversActive, _C.green),
+            _Seg(data.driversPendingKyc, _C.amber),
+            _Seg(data.driversAtRiskOrSuspended, _C.red),
+          ], total: data.driversTotal),
+
+          const SizedBox(height: 10),
+          _LegendRow('Actifs', data.driversActive, _C.green),
+          const SizedBox(height: 4),
+          _LegendRow('KYC/Terrain', data.driversPendingKyc, _C.amber),
+          const SizedBox(height: 4),
+          _LegendRow('Suspendus', data.driversAtRiskOrSuspended, _C.red),
+        ],
       ),
     );
   }
 }
 
-enum _Severity { critical, warning, info }
+// ═══════════════════════════════════════════════════════════════════════════════
+// Contrats
+// ═══════════════════════════════════════════════════════════════════════════════
 
-class _AlertItem {
-  const _AlertItem({
+class _ContractsCard extends StatelessWidget {
+  const _ContractsCard({required this.data});
+  final DashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.description_outlined, size: 15, color: _C.sub),
+              const SizedBox(width: 4),
+              const Text(
+                'Contrats',
+                style: TextStyle(
+                    fontSize: 12, color: _C.sub,
+                    fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              Text(
+                '${data.contractsTotal} total',
+                style: const TextStyle(fontSize: 12, color: _C.sub),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _ContractStatBox(
+                  value: data.contractsActive,
+                  label: 'Actifs',
+                  color: _C.green,
+                  bg: _C.greenLight,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ContractStatBox(
+                  value: data.contractsPending,
+                  label: 'En attente',
+                  color: _C.amber,
+                  bg: const Color(0xFFFEF3C7),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ContractStatBox(
+                  value: data.contractsClosed,
+                  label: 'Terminés',
+                  color: _C.sub,
+                  bg: const Color(0xFFF3F4F6),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContractStatBox extends StatelessWidget {
+  const _ContractStatBox({
+    required this.value,
+    required this.label,
+    required this.color,
+    required this.bg,
+  });
+  final int value;
+  final String label;
+  final Color color;
+  final Color bg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Text(
+            '$value',
+            style: TextStyle(
+              fontSize: 22, fontWeight: FontWeight.w800, color: color),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Alertes
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _AlertsCard extends StatelessWidget {
+  const _AlertsCard({required this.data});
+  final DashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <_AlertRow>[];
+    if (data.documentsExpired > 0) {
+      items.add(_AlertRow(
+        icon: Icons.warning_amber_rounded,
+        color: _C.red,
+        label: '${data.documentsExpired} doc${data.documentsExpired > 1 ? 's' : ''} expiré${data.documentsExpired > 1 ? 's' : ''}',
+        route: AppRoutes.documents,
+      ));
+    }
+    if (data.documentsExpiringSoon > 0) {
+      items.add(_AlertRow(
+        icon: Icons.timer_outlined,
+        color: _C.amber,
+        label: '${data.documentsExpiringSoon} expir${data.documentsExpiringSoon > 1 ? 'ent' : 'e'} bientôt',
+        route: AppRoutes.documents,
+      ));
+    }
+    if (data.vehiclesWithoutDriver > 0) {
+      items.add(_AlertRow(
+        icon: Icons.person_off_outlined,
+        color: _C.amber,
+        label: '${data.vehiclesWithoutDriver} véhicule${data.vehiclesWithoutDriver > 1 ? 's' : ''} sans chauffeur',
+        route: AppRoutes.vehicles,
+      ));
+    }
+    if (data.vehiclesWithoutActiveContract > 0) {
+      items.add(_AlertRow(
+        icon: Icons.directions_car_outlined,
+        color: _C.sub,
+        label: '${data.vehiclesWithoutActiveContract} véhicule${data.vehiclesWithoutActiveContract > 1 ? 's' : ''} disponible${data.vehiclesWithoutActiveContract > 1 ? 's' : ''}',
+        route: AppRoutes.vehicles,
+      ));
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _C.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: _C.red.withValues(alpha: 0.25)),
+        boxShadow: const [
+          BoxShadow(color: _C.shadow, blurRadius: 8,
+              offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: _C.red.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.notifications_active_outlined,
+                      size: 14, color: _C.red),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Attention requise',
+                  style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700,
+                    color: _C.text),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _C.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${data.alertCount}',
+                    style: const TextStyle(
+                      fontSize: 11, color: Colors.white,
+                      fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+            child: Column(
+              children: items
+                  .asMap()
+                  .entries
+                  .expand((e) => [
+                        e.value,
+                        if (e.key < items.length - 1)
+                          const Divider(height: 1, color: _C.border),
+                      ])
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AlertRow extends StatelessWidget {
+  const _AlertRow({
     required this.icon,
     required this.color,
     required this.label,
-    required this.sublabel,
     required this.route,
-    required this.severity,
   });
   final IconData icon;
   final Color color;
   final String label;
-  final String sublabel;
   final String route;
-  final _Severity severity;
-}
-
-class _AlertRow extends StatelessWidget {
-  const _AlertRow({required this.item});
-  final _AlertItem item;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.push(item.route),
+      onTap: () => context.push(route),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: item.color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(item.icon, size: 18, color: item.color),
-            ),
-            const SizedBox(width: 12),
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: item.color,
-                    ),
-                  ),
-                  Text(
-                    item.sublabel,
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textSecondary),
-                  ),
-                ],
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 13, color: color,
+                    fontWeight: FontWeight.w600),
               ),
             ),
-            const Icon(Icons.chevron_right,
-                size: 18, color: AppColors.textDisabled),
+            Icon(Icons.chevron_right, size: 16,
+                color: color.withValues(alpha: 0.5)),
           ],
         ),
       ),
@@ -595,39 +948,67 @@ class _AlertRow extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 3 — État de la flotte
+// Actions rapides
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class _FleetStatusSection extends StatelessWidget {
-  const _FleetStatusSection({required this.data});
-  final DashboardData data;
+class _QuickActions extends StatelessWidget {
+  static const _actions = [
+    (Icons.add_box_outlined, 'Véhicule', '/vehicles/new', _C.blue),
+    (Icons.person_add_outlined, 'Chauffeur', '/drivers/new', _C.green),
+    (Icons.post_add_outlined, 'Contrat', '/contracts/new',
+     Color(0xFF7C3AED)),
+    (Icons.payments_outlined, 'Paiement', AppRoutes.payments, _C.amber),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final total = data.vehiclesTotal;
-    if (total == 0) return const SizedBox.shrink();
-
-    final segments = [
-      _Seg('En service', data.vehiclesAssignedOrInService,
-          AppColors.primary),
-      _Seg('Disponibles', data.vehiclesAvailable, AppColors.success),
-      _Seg('Indisponibles', data.vehiclesImmobilized, AppColors.error),
-    ];
-
-    return _SectionCard(
-      title: 'ÉTAT DE LA FLOTTE',
-      icon: Icons.directions_car_outlined,
-      trailing: Text(
-        '$total véhicules',
-        style: const TextStyle(
-            fontSize: 12, color: AppColors.textSecondary,
-            fontWeight: FontWeight.w600),
-      ),
+    return _Card(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProportionalBar(segments: segments, total: total),
+          const Text(
+            'Actions rapides',
+            style: TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w700, color: _C.text),
+          ),
           const SizedBox(height: 14),
-          ...segments.map((s) => _StatusRow(seg: s, total: total)),
+          Row(
+            children: _actions.map((a) {
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: InkWell(
+                    onTap: () => context.push(a.$3),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: a.$4.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: a.$4.withValues(alpha: 0.2)),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(a.$1, size: 22, color: a.$4),
+                          const SizedBox(height: 6),
+                          Text(
+                            a.$2,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: a.$4,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
         ],
       ),
     );
@@ -635,71 +1016,56 @@ class _FleetStatusSection extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 4 — État des chauffeurs
+// Shared micro-widgets
 // ═══════════════════════════════════════════════════════════════════════════════
 
-class _DriverStatusSection extends StatelessWidget {
-  const _DriverStatusSection({required this.data});
-  final DashboardData data;
+/// Wrapper carte blanche avec ombre
+class _Card extends StatelessWidget {
+  const _Card({required this.child});
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final total = data.driversTotal;
-    if (total == 0) return const SizedBox.shrink();
-
-    final segments = [
-      _Seg('Actifs', data.driversActive, AppColors.success),
-      _Seg('KYC / Terrain', data.driversPendingKyc, AppColors.warning),
-      _Seg('Suspendus / Risque',
-          data.driversAtRiskOrSuspended, AppColors.error),
-    ];
-
-    return _SectionCard(
-      title: 'ÉTAT DES CHAUFFEURS',
-      icon: Icons.people_outlined,
-      trailing: Text(
-        '$total enregistrés',
-        style: const TextStyle(
-            fontSize: 12, color: AppColors.textSecondary,
-            fontWeight: FontWeight.w600),
-      ),
-      child: Column(
-        children: [
-          _ProportionalBar(segments: segments, total: total),
-          const SizedBox(height: 14),
-          ...segments.map((s) => _StatusRow(seg: s, total: total)),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _C.card,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: _C.shadow, blurRadius: 8, offset: Offset(0, 2)),
         ],
       ),
+      child: child,
     );
   }
 }
 
-// ── Proportional bar shared widget ───────────────────────────────────────────
-
+/// Barre proportionnelle segmentée
 class _Seg {
-  const _Seg(this.label, this.count, this.color);
-  final String label;
+  const _Seg(this.count, this.color);
   final int count;
   final Color color;
 }
 
-class _ProportionalBar extends StatelessWidget {
-  const _ProportionalBar(
-      {required this.segments, required this.total});
+class _MiniStackedBar extends StatelessWidget {
+  const _MiniStackedBar({required this.segments, required this.total});
   final List<_Seg> segments;
   final int total;
 
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(4),
       child: SizedBox(
-        height: 10,
+        height: 8,
         child: Row(
           children: segments.map((s) {
-            final ratio = total > 0 ? s.count / total : 0.0;
+            final flex = total > 0
+                ? ((s.count / total) * 1000).round().clamp(1, 1000)
+                : 1;
             return Expanded(
-              flex: (ratio * 1000).round().clamp(1, 1000),
+              flex: flex,
               child: ColoredBox(color: s.color),
             );
           }).toList(),
@@ -709,419 +1075,104 @@ class _ProportionalBar extends StatelessWidget {
   }
 }
 
-class _StatusRow extends StatelessWidget {
-  const _StatusRow({required this.seg, required this.total});
-  final _Seg seg;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final ratio = total > 0 ? seg.count / total : 0.0;
-    final pct = (ratio * 100).round();
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Container(
-            width: 8, height: 8,
-            decoration: BoxDecoration(
-              color: seg.color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 4,
-            child: Text(
-              seg.label,
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.textPrimary),
-            ),
-          ),
-          Text(
-            '${seg.count}',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: seg.color,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: ratio,
-                minHeight: 5,
-                backgroundColor: seg.color.withValues(alpha: 0.1),
-                valueColor: AlwaysStoppedAnimation<Color>(seg.color),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 32,
-            child: Text(
-              '$pct%',
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.textSecondary),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 5 — Finances
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _FinancesSection extends StatelessWidget {
-  const _FinancesSection({required this.data});
-  final DashboardData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SectionCard(
-      title: 'FINANCES',
-      icon: Icons.account_balance_wallet_outlined,
-      child: Column(
-        children: [
-          // Revenus
-          Row(
-            children: [
-              Expanded(
-                child: _FinanceTile(
-                  label: "Aujourd'hui",
-                  amount: data.paymentsToday,
-                  count: data.paymentCountToday,
-                  countLabel: 'paiement${data.paymentCountToday > 1 ? 's' : ''}',
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _FinanceTile(
-                  label: 'Ce mois',
-                  amount: data.paymentsThisMonth,
-                  count: data.paymentsValidated + data.paymentsPending,
-                  countLabel: 'paiement${(data.paymentsValidated + data.paymentsPending) > 1 ? 's' : ''}',
-                  color: AppColors.success,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: AppColors.border),
-          const SizedBox(height: 12),
-          // Validated vs pending
-          Row(
-            children: [
-              _StatusPill(
-                icon: Icons.check_circle_outline,
-                label: '${data.paymentsValidated} validés',
-                color: AppColors.success,
-              ),
-              const SizedBox(width: 10),
-              _StatusPill(
-                icon: Icons.hourglass_empty_outlined,
-                label: '${data.paymentsPending} en attente',
-                color: AppColors.warning,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FinanceTile extends StatelessWidget {
-  const _FinanceTile({
-    required this.label,
-    required this.amount,
-    required this.count,
-    required this.countLabel,
-    required this.color,
-  });
+/// Ligne légende : dot + label + valeur
+class _LegendRow extends StatelessWidget {
+  const _LegendRow(this.label, this.value, this.color);
   final String label;
-  final double amount;
-  final int count;
-  final String countLabel;
+  final int value;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-                fontSize: 11, color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _fmt(amount),
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
-          ),
-          Text(
-            'F CFA',
-            style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7)),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$count $countLabel',
-            style: const TextStyle(
-                fontSize: 11, color: AppColors.textSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _fmt(double v) {
-    final n = v.toInt();
-    final str = n.toString();
-    final buf = StringBuffer();
-    for (int i = 0; i < str.length; i++) {
-      if (i > 0 && (str.length - i) % 3 == 0) buf.write(' ');
-      buf.write(str[i]);
-    }
-    return buf.toString();
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
+    return Row(
+      children: [
+        Container(
+          width: 7, height: 7,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        child: Row(
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: _C.sub),
+          ),
+        ),
+        Text(
+          '$value',
+          style: const TextStyle(
+            fontSize: 11, fontWeight: FontWeight.w700, color: _C.text),
+        ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Skeleton + Error
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _Skeleton extends StatelessWidget {
+  const _Skeleton({this.user});
+  final User? user;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: [
+        _WelcomeHeader(user: user),
+        const SizedBox(height: 20),
+        _sk(140), const SizedBox(height: 16),
+        _sk(130), const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: _sk(180)),
+          const SizedBox(width: 12),
+          Expanded(child: _sk(180)),
+        ]),
+      ],
+    );
+  }
+
+  Widget _sk(double h) => Container(
+    height: h,
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.7),
+      borderRadius: BorderRadius.circular(16),
+    ),
+  );
+}
+
+class _ErrorBody extends StatelessWidget {
+  const _ErrorBody({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                ),
+            const Icon(Icons.error_outline, color: _C.red, size: 40),
+            const SizedBox(height: 12),
+            Text(message,
+                style: const TextStyle(color: _C.sub, fontSize: 13),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => context.read<DashboardCubit>().load(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _C.green,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
+              child: const Text('Réessayer'),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 6 — Actions rapides
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _QuickActionsSection extends StatelessWidget {
-  const _QuickActionsSection({required this.data});
-  final DashboardData data;
-
-  static const _actions = [
-    _Action('+ Véhicule', Icons.directions_car_outlined,
-        '/vehicles/new', AppColors.primary),
-    _Action('+ Chauffeur', Icons.person_add_outlined,
-        '/drivers/new', Color(0xFF057A55)),
-    _Action('+ Contrat', Icons.description_outlined,
-        '/contracts/new', Color(0xFF7E3AF2)),
-    _Action('+ Paiement', Icons.payments_outlined,
-        AppRoutes.payments, Color(0xFFC27803)),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return _SectionCard(
-      title: 'ACTIONS RAPIDES',
-      icon: Icons.bolt_outlined,
-      child: Row(
-        children: _actions
-            .map((a) => Expanded(child: _QuickActionBtn(action: a)))
-            .toList(),
-      ),
-    );
-  }
-}
-
-class _Action {
-  const _Action(this.label, this.icon, this.route, this.color);
-  final String label;
-  final IconData icon;
-  final String route;
-  final Color color;
-}
-
-class _QuickActionBtn extends StatelessWidget {
-  const _QuickActionBtn({required this.action});
-  final _Action action;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3),
-      child: InkWell(
-        onTap: () => context.push(action.route),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: action.color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-                color: action.color.withValues(alpha: 0.25)),
-          ),
-          child: Column(
-            children: [
-              Icon(action.icon, color: action.color, size: 22),
-              const SizedBox(height: 5),
-              Text(
-                action.label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: action.color,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Shared section card wrapper
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.icon,
-    required this.child,
-    this.trailing,
-    this.badge,
-    this.badgeColor,
-  });
-
-  final String title;
-  final IconData icon;
-  final Widget child;
-  final Widget? trailing;
-  final int? badge;
-  final Color? badgeColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding:
-                const EdgeInsets.fromLTRB(16, 14, 12, 0),
-            child: Row(
-              children: [
-                Icon(icon, size: 15, color: AppColors.textSecondary),
-                const SizedBox(width: 6),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                if (badge != null && badge! > 0) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: (badgeColor ?? AppColors.primary)
-                          .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '$badge',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: badgeColor ?? AppColors.primary,
-                      ),
-                    ),
-                  ),
-                ],
-                if (badge == 0) ...[
-                  const SizedBox(width: 6),
-                  const Icon(Icons.check_circle,
-                      size: 13, color: AppColors.success),
-                ],
-                const Spacer(),
-                if (trailing != null) trailing!,
-              ],
-            ),
-          ),
-          // Content
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: child,
-          ),
-        ],
       ),
     );
   }

@@ -85,6 +85,7 @@ class DashboardRepositoryImpl implements DashboardRepository {
     final payments = raw.payments;
     double pToday = 0, pMonth = 0;
     int pCountToday = 0, pValidated = 0, pPending = 0;
+    final weeklyTotals = <double>[0, 0, 0, 0, 0];
 
     for (final p in payments) {
       final status = p['status'] as String? ?? '';
@@ -100,6 +101,9 @@ class DashboardRepositoryImpl implements DashboardRepository {
 
       if (!paidAt.isBefore(monthStart)) {
         pMonth += amount;
+        // Bucket semaine du mois (0=S1 … 4=S5)
+        final week = ((paidAt.day - 1) ~/ 7).clamp(0, 4);
+        weeklyTotals[week] += amount;
         if (!paidAt.isBefore(todayStart)) {
           pToday += amount;
           pCountToday++;
@@ -143,6 +147,7 @@ class DashboardRepositoryImpl implements DashboardRepository {
       documentsExpiringSoon: docExpiringSoon,
       vehiclesWithoutDriver: vNoDriver,
       vehiclesWithoutActiveContract: vNoContract,
+      weeklyPayments: weeklyTotals,
     );
   }
 

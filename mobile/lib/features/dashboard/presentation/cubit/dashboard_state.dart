@@ -30,6 +30,8 @@ class DashboardData extends Equatable {
     required this.documentsExpiringSoon,
     required this.vehiclesWithoutDriver,
     required this.vehiclesWithoutActiveContract,
+    // Tendance hebdomadaire des paiements (S1..S5 du mois en cours)
+    this.weeklyPayments = const [0, 0, 0, 0, 0],
   });
 
   // Véhicules
@@ -63,7 +65,9 @@ class DashboardData extends Equatable {
   final int vehiclesWithoutDriver;
   final int vehiclesWithoutActiveContract;
 
-  /// Total des alertes actives
+  /// Montants par semaine du mois courant (5 buckets, S1→S5)
+  final List<double> weeklyPayments;
+
   int get alertCount =>
       documentsExpired +
       documentsExpiringSoon +
@@ -81,6 +85,7 @@ class DashboardData extends Equatable {
     paymentCountToday: 0, paymentsValidated: 0, paymentsPending: 0,
     documentsExpired: 0, documentsExpiringSoon: 0,
     vehiclesWithoutDriver: 0, vehiclesWithoutActiveContract: 0,
+    weeklyPayments: [0, 0, 0, 0, 0],
   );
 
   @override
@@ -92,6 +97,7 @@ class DashboardData extends Equatable {
         paymentCountToday, paymentsValidated, paymentsPending,
         documentsExpired, documentsExpiringSoon,
         vehiclesWithoutDriver, vehiclesWithoutActiveContract,
+        weeklyPayments,
       ];
 }
 
