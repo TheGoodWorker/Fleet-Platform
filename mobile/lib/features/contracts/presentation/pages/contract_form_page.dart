@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/datasources/form_options_datasource.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../shared/theme/app_theme.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/entity_selector_field.dart';
+import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../../auth/presentation/bloc/auth_state.dart';
 import '../../domain/entities/contract.dart';
 import '../cubit/contract_detail_cubit.dart';
 import '../cubit/contract_detail_state.dart';
@@ -31,19 +35,29 @@ class _ContractFormView extends StatefulWidget {
 class _ContractFormViewState extends State<_ContractFormView> {
   final _formKey = GlobalKey<FormState>();
 
+  // ── Type contrat ───────────────────────────────────────────────────────────
   ContractType _selectedType = ContractType.ownershipProgram;
 
-  final _vehicleIdCtrl = TextEditingController();
-  final _managerIdCtrl = TextEditingController();
-  final _driverIdCtrl = TextEditingController();
-  final _ownerIdCtrl = TextEditingController();
+  // ── Sélections ─────────────────────────────────────────────────────────────
+  VehicleOption? _selectedVehicle;
+  DriverOption? _selectedDriver;
+  OwnerOption? _selectedOwner;
+
+  // ── Champs financiers ──────────────────────────────────────────────────────
   final _dailyAmountCtrl = TextEditingController();
   final _targetDaysCtrl = TextEditingController();
   final _restDayCtrl = TextEditingController();
   final _simpleRentalMonthlyAmountCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
-
   String? _ownerPaymentFrequency;
+
+  // ── Listes pour les sélecteurs ─────────────────────────────────────────────
+  List<VehicleOption> _vehicles = [];
+  List<DriverOption> _drivers = [];
+  List<OwnerOption> _owners = [];
+
+  bool _loadingOptions = true;
+  String? _optionsError;
 
   static const _paymentFrequencies = [
     ('MONTHLY', 'Mensuel'),
@@ -52,11 +66,41 @@ class _ContractFormViewState extends State<_ContractFormView> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadOptions();
+  }
+
+  Future<void> _loadOptions() async {
+    setState(() {
+      _loadingOptions = true;
+      _optionsError = null;
+    });
+    try {
+      final ds = sl<FormOptionsDatasource>();
+      final results = await Future.wait([
+        ds.getVehicles(status: 'AVAILABLE'),
+        ds.getDrivers(statuses: const ['ACTIVE', 'APPROVED']),
+        ds.getOwners(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _vehicles = results[0] as List<VehicleOption>;
+        _drivers = results[1] as List<DriverOption>;
+        _owners = results[2] as List<OwnerOption>;
+        _loadingOptions = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _optionsError = e.toString();
+        _loadingOptions = false;
+      });
+    }
+  }
+
+  @override
   void dispose() {
-    _vehicleIdCtrl.dispose();
-    _managerIdCtrl.dispose();
-    _driverIdCtrl.dispose();
-    _ownerIdCtrl.dispose();
     _dailyAmountCtrl.dispose();
     _targetDaysCtrl.dispose();
     _restDayCtrl.dispose();
@@ -65,18 +109,27 @@ class _ContractFormViewState extends State<_ContractFormView> {
     super.dispose();
   }
 
-  void _submit() {
+  /// managerId = ID de l'utilisateur connecté (le manager qui crée le contrat)
+  String _getManagerId(BuildContext context) {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) return authState.user.id;
+    return '';
+  }
+
+  void _submit(BuildContext context) {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedVehicle == null) return;
+
+    final managerId = _getManagerId(context);
+    if (managerId.isEmpty) return;
 
     final cubit = context.read<ContractDetailCubit>();
     cubit.createContract(
       type: _selectedType.value,
-      vehicleId: _vehicleIdCtrl.text.trim(),
-      managerId: _managerIdCtrl.text.trim(),
-      driverId:
-          _driverIdCtrl.text.trim().isNotEmpty ? _driverIdCtrl.text.trim() : null,
-      ownerId:
-          _ownerIdCtrl.text.trim().isNotEmpty ? _ownerIdCtrl.text.trim() : null,
+      vehicleId: _selectedVehicle!.id,
+      managerId: managerId,
+      driverId: _selectedDriver?.id,
+      ownerId: _selectedOwner?.id,
       dailyAmount: double.parse(_dailyAmountCtrl.text.trim()),
       targetDays: _selectedType == ContractType.ownershipProgram &&
               _targetDaysCtrl.text.trim().isNotEmpty
@@ -85,16 +138,13 @@ class _ContractFormViewState extends State<_ContractFormView> {
       restDay: _restDayCtrl.text.trim().isNotEmpty
           ? int.tryParse(_restDayCtrl.text.trim())
           : null,
-      simpleRentalMonthlyAmount:
-          _selectedType == ContractType.simpleRental &&
-                  _simpleRentalMonthlyAmountCtrl.text.trim().isNotEmpty
-              ? double.tryParse(_simpleRentalMonthlyAmountCtrl.text.trim())
-              : null,
-      ownerPaymentFrequency: _selectedType == ContractType.simpleRental
-          ? _ownerPaymentFrequency
+      simpleRentalMonthlyAmount: _selectedType == ContractType.simpleRental &&
+              _simpleRentalMonthlyAmountCtrl.text.trim().isNotEmpty
+          ? double.tryParse(_simpleRentalMonthlyAmountCtrl.text.trim())
           : null,
-      notes:
-          _notesCtrl.text.trim().isNotEmpty ? _notesCtrl.text.trim() : null,
+      ownerPaymentFrequency:
+          _selectedType == ContractType.simpleRental ? _ownerPaymentFrequency : null,
+      notes: _notesCtrl.text.trim().isNotEmpty ? _notesCtrl.text.trim() : null,
     );
   }
 
@@ -120,12 +170,10 @@ class _ContractFormViewState extends State<_ContractFormView> {
         }
       },
       builder: (context, state) {
-        final isLoading = state is ContractDetailActionInProgress;
+        final isSaving = state is ContractDetailActionInProgress;
 
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Nouveau contrat'),
-          ),
+          appBar: AppBar(title: const Text('Nouveau contrat')),
           body: Form(
             key: _formKey,
             child: SingleChildScrollView(
@@ -133,19 +181,46 @@ class _ContractFormViewState extends State<_ContractFormView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── 1. Type ──────────────────────────────────────────────
+                  // ── Erreur de chargement des options ─────────────────────
+                  if (_optionsError != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.errorLight,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.error),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline,
+                              color: AppColors.error, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Impossible de charger les options. $_optionsError',
+                              style:
+                                  const TextStyle(color: AppColors.error, fontSize: 13),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _loadOptions,
+                            child: const Text('Réessayer'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // ── 1. Type ───────────────────────────────────────────────
                   const _SectionHeader(title: 'Type de contrat'),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<ContractType>(
                     initialValue: _selectedType,
-                    decoration: _inputDecoration('Type *'),
+                    decoration: const InputDecoration(labelText: 'Type *'),
                     items: ContractType.values
-                        .map(
-                          (t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(t.label),
-                          ),
-                        )
+                        .map((t) => DropdownMenuItem(
+                            value: t, child: Text(t.label)))
                         .toList(),
                     onChanged: (v) {
                       if (v != null) setState(() => _selectedType = v);
@@ -154,75 +229,91 @@ class _ContractFormViewState extends State<_ContractFormView> {
                   ),
                   const SizedBox(height: 20),
 
-                  // ── 2. vehicleId ─────────────────────────────────────────
-                  const _SectionHeader(title: 'Véhicule'),
+                  // ── 2. Véhicule ───────────────────────────────────────────
+                  const _SectionHeader(title: 'Véhicule *'),
                   const SizedBox(height: 8),
-                  _UuidField(
-                    label: 'ID Véhicule *',
-                    controller: _vehicleIdCtrl,
-                    required: true,
+                  EntitySelectorField<VehicleOption>(
+                    label: 'Sélectionner un véhicule',
+                    items: _vehicles,
+                    labelOf: vehicleLabel,
+                    subtitleOf: vehicleSubtitle,
+                    initialValue: _selectedVehicle,
+                    isLoading: _loadingOptions,
+                    prefixIcon: Icons.directions_car_outlined,
+                    searchHint: 'Rechercher par plaque, marque…',
+                    emptyMessage: 'Aucun véhicule disponible',
+                    onChanged: (v) => setState(() => _selectedVehicle = v),
+                    validator: (v) => v == null ? 'Sélectionnez un véhicule' : null,
                   ),
                   const SizedBox(height: 20),
 
-                  // ── 3. managerId ─────────────────────────────────────────
-                  const _SectionHeader(title: 'Manager'),
-                  const SizedBox(height: 8),
-                  _UuidField(
-                    label: 'ID Manager *',
-                    controller: _managerIdCtrl,
-                    required: true,
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── 4. driverId ──────────────────────────────────────────
+                  // ── 3. Chauffeur ──────────────────────────────────────────
                   const _SectionHeader(
                     title: 'Chauffeur',
-                    subtitle: 'Optionnel pour PARTNER_FLEET',
+                    subtitle: 'Optionnel pour PARTNER_FLEET multi-conducteur',
                   ),
                   const SizedBox(height: 8),
-                  _UuidField(
-                    label: 'ID Chauffeur (optionnel)',
-                    controller: _driverIdCtrl,
-                    required: false,
+                  EntitySelectorField<DriverOption>(
+                    label: 'Sélectionner un chauffeur (optionnel)',
+                    items: _drivers,
+                    labelOf: driverLabel,
+                    subtitleOf: driverSubtitle,
+                    initialValue: _selectedDriver,
+                    isLoading: _loadingOptions,
+                    prefixIcon: Icons.person_outline,
+                    searchHint: 'Rechercher par nom, téléphone…',
+                    emptyMessage: 'Aucun chauffeur actif/approuvé',
                   ),
                   const SizedBox(height: 20),
 
-                  // ── 5. ownerId ───────────────────────────────────────────
+                  // ── 4. Propriétaire ───────────────────────────────────────
                   const _SectionHeader(title: 'Propriétaire'),
                   const SizedBox(height: 8),
-                  _UuidField(
-                    label: 'ID Propriétaire (optionnel)',
-                    controller: _ownerIdCtrl,
-                    required: false,
+                  EntitySelectorField<OwnerOption>(
+                    label: 'Sélectionner un propriétaire (optionnel)',
+                    items: _owners,
+                    labelOf: ownerLabel,
+                    initialValue: _selectedOwner,
+                    isLoading: _loadingOptions,
+                    prefixIcon: Icons.business_outlined,
+                    searchHint: 'Rechercher par nom…',
+                    emptyMessage: 'Aucun propriétaire trouvé',
+                    onChanged: (o) => setState(() => _selectedOwner = o),
                   ),
                   const SizedBox(height: 20),
 
-                  // ── 6. dailyAmount ───────────────────────────────────────
+                  // ── 5. Manager (auto-rempli) ──────────────────────────────
+                  const _SectionHeader(title: 'Manager responsable'),
+                  const SizedBox(height: 8),
+                  _ManagerInfoTile(managerId: _getManagerId(context)),
+                  const SizedBox(height: 20),
+
+                  // ── 6. Montant journalier ─────────────────────────────────
                   const _SectionHeader(title: 'Financier'),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _dailyAmountCtrl,
-                    decoration: _inputDecoration('Montant journalier * (FCFA)'),
+                    decoration: const InputDecoration(
+                      labelText: 'Montant journalier * (FCFA)',
+                      prefixIcon: Icon(Icons.payments_outlined, size: 20),
+                    ),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
-                      if (v == null || v.trim().isEmpty) {
-                        return 'Champ requis';
-                      }
-                      if (double.tryParse(v.trim()) == null) {
-                        return 'Montant invalide';
-                      }
+                      if (v == null || v.trim().isEmpty) return 'Champ requis';
+                      if (double.tryParse(v.trim()) == null) return 'Montant invalide';
                       return null;
                     },
                   ),
                   const SizedBox(height: 12),
 
-                  // ── 7. targetDays (OWNERSHIP_PROGRAM only) ───────────────
+                  // ── 7. Jours cible (OWNERSHIP_PROGRAM) ────────────────────
                   if (_selectedType == ContractType.ownershipProgram) ...[
                     TextFormField(
                       controller: _targetDaysCtrl,
-                      decoration: _inputDecoration(
-                        'Jours cible (Programme propriété)',
+                      decoration: const InputDecoration(
+                        labelText: 'Jours cible (Programme propriété)',
+                        prefixIcon: Icon(Icons.calendar_month_outlined, size: 20),
                       ),
                       keyboardType: TextInputType.number,
                       validator: (v) {
@@ -237,60 +328,54 @@ class _ContractFormViewState extends State<_ContractFormView> {
                     const SizedBox(height: 12),
                   ],
 
-                  // ── 8. restDay ───────────────────────────────────────────
+                  // ── 8. Jour de repos ──────────────────────────────────────
                   TextFormField(
                     controller: _restDayCtrl,
-                    decoration: _inputDecoration(
-                      'Jour de repos (0=Dim, 6=Sam) — optionnel',
+                    decoration: const InputDecoration(
+                      labelText: 'Jour de repos (0=Dim … 6=Sam — optionnel)',
+                      prefixIcon: Icon(Icons.weekend_outlined, size: 20),
                     ),
                     keyboardType: TextInputType.number,
                     validator: (v) {
                       if (v != null && v.trim().isNotEmpty) {
                         final n = int.tryParse(v.trim());
-                        if (n == null || n < 0 || n > 6) {
-                          return 'Valeur entre 0 et 6';
-                        }
+                        if (n == null || n < 0 || n > 6) return 'Valeur entre 0 et 6';
                       }
                       return null;
                     },
                   ),
                   const SizedBox(height: 20),
 
-                  // ── 9-10. SIMPLE_RENTAL extra fields ─────────────────────
+                  // ── 9-10. SIMPLE_RENTAL extra ─────────────────────────────
                   if (_selectedType == ContractType.simpleRental) ...[
                     const _SectionHeader(title: 'Location simple'),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _simpleRentalMonthlyAmountCtrl,
-                      decoration: _inputDecoration(
-                        'Montant mensuel propriétaire * (FCFA)',
+                      decoration: const InputDecoration(
+                        labelText: 'Montant mensuel propriétaire * (FCFA)',
+                        prefixIcon: Icon(Icons.account_balance_outlined, size: 20),
                       ),
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
-                        if (_selectedType != ContractType.simpleRental) {
-                          return null;
-                        }
+                        if (_selectedType != ContractType.simpleRental) return null;
                         if (v == null || v.trim().isEmpty) {
                           return 'Champ requis pour Location simple';
                         }
-                        if (double.tryParse(v.trim()) == null) {
-                          return 'Montant invalide';
-                        }
+                        if (double.tryParse(v.trim()) == null) return 'Montant invalide';
                         return null;
                       },
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       initialValue: _ownerPaymentFrequency,
-                      decoration: _inputDecoration('Fréquence paiement propriétaire'),
+                      decoration: const InputDecoration(
+                        labelText: 'Fréquence de versement',
+                      ),
                       items: _paymentFrequencies
-                          .map(
-                            (f) => DropdownMenuItem(
-                              value: f.$1,
-                              child: Text(f.$2),
-                            ),
-                          )
+                          .map((f) => DropdownMenuItem(
+                              value: f.$1, child: Text(f.$2)))
                           .toList(),
                       onChanged: (v) =>
                           setState(() => _ownerPaymentFrequency = v),
@@ -298,24 +383,23 @@ class _ContractFormViewState extends State<_ContractFormView> {
                     const SizedBox(height: 20),
                   ],
 
-                  // ── 11. Notes ────────────────────────────────────────────
+                  // ── 11. Notes ─────────────────────────────────────────────
                   const _SectionHeader(title: 'Notes'),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _notesCtrl,
-                    decoration: _inputDecoration('Notes (optionnel)'),
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optionnel)',
+                    ),
                     maxLines: 3,
-                    keyboardType: TextInputType.multiline,
-                    textInputAction: TextInputAction.newline,
                   ),
                   const SizedBox(height: 28),
 
-                  // ── Submit ───────────────────────────────────────────────
                   AppButton(
                     label: 'Créer le contrat',
-                    isLoading: isLoading,
+                    isLoading: isSaving,
                     icon: Icons.add_circle_outline,
-                    onPressed: isLoading ? null : _submit,
+                    onPressed: isSaving ? null : () => _submit(context),
                   ),
                   const SizedBox(height: 24),
                 ],
@@ -326,38 +410,9 @@ class _ContractFormViewState extends State<_ContractFormView> {
       },
     );
   }
-
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: AppColors.border),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: AppColors.border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: AppColors.borderFocus, width: 2),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: AppColors.error),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: AppColors.error, width: 2),
-      ),
-      filled: true,
-      fillColor: AppColors.surface,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    );
-  }
 }
 
-// ── Reusable sub-widgets ───────────────────────────────────────────────────────
+// ── Sous-widgets ──────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title, this.subtitle});
@@ -382,10 +437,7 @@ class _SectionHeader extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             subtitle!,
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-            ),
+            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
           ),
         ],
       ],
@@ -393,61 +445,53 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _UuidField extends StatelessWidget {
-  const _UuidField({
-    required this.label,
-    required this.controller,
-    required this.required,
-  });
+/// Affiche le manager courant en lecture seule (pas un champ à remplir).
+class _ManagerInfoTile extends StatelessWidget {
+  const _ManagerInfoTile({required this.managerId});
 
-  final String label;
-  final TextEditingController controller;
-  final bool required;
+  final String managerId;
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.borderFocus, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.error),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.error, width: 2),
-        ),
-        filled: true,
-        fillColor: AppColors.surface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        hintText: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-        hintStyle: const TextStyle(
-          fontSize: 12,
-          color: AppColors.textDisabled,
-        ),
+    final authState = context.read<AuthBloc>().state;
+    final user = authState is AuthAuthenticated ? authState.user : null;
+    final name =
+        user != null ? '${user.firstName} ${user.lastName}'.trim() : '—';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
       ),
-      keyboardType: TextInputType.text,
-      autocorrect: false,
-      validator: (v) {
-        if (required && (v == null || v.trim().isEmpty)) {
-          return 'Champ requis';
-        }
-        return null;
-      },
+      child: Row(
+        children: [
+          const Icon(Icons.manage_accounts_outlined,
+              color: AppColors.primary, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name.isNotEmpty ? name : 'Manager',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const Text(
+                  'Utilisateur connecté — attribué automatiquement',
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.lock_outline, size: 14, color: AppColors.textSecondary),
+        ],
+      ),
     );
   }
 }

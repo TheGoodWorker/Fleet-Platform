@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../../core/datasources/form_options_datasource.dart';
 import '../../../../../core/di/injection.dart';
 import '../../../../shared/theme/app_theme.dart';
 import '../../../../shared/widgets/app_button.dart';
+import '../../../../shared/widgets/entity_selector_field.dart';
 import '../cubit/vehicle_detail_cubit.dart';
 import '../cubit/vehicle_detail_state.dart';
 
@@ -31,15 +33,26 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
 
   String? _fuelType;
   String? _transmission;
+  OwnerOption? _selectedOwner;
 
   bool _prefilled = false;
+  List<OwnerOption> _owners = [];
+  bool _loadingOwners = true;
 
   @override
   void initState() {
     super.initState();
     _cubit = sl<VehicleDetailCubit>();
-    if (widget.vehicleId != null) {
-      _cubit.load(widget.vehicleId!);
+    if (widget.vehicleId != null) _cubit.load(widget.vehicleId!);
+    _loadOwners();
+  }
+
+  Future<void> _loadOwners() async {
+    try {
+      final owners = await sl<FormOptionsDatasource>().getOwners();
+      if (mounted) setState(() { _owners = owners; _loadingOwners = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingOwners = false);
     }
   }
 
@@ -95,6 +108,7 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
         transmission: _transmission,
         seats: seats,
         vin: vinText.isNotEmpty ? vinText : null,
+        ownerId: _selectedOwner?.id,
       );
     } else {
       _cubit.updateVehicle(widget.vehicleId!, {
@@ -150,8 +164,7 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
             ),
             body: isLoadingExisting
                 ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
-                  )
+                    child: CircularProgressIndicator(color: AppColors.primary))
                 : SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: Form(
@@ -164,11 +177,10 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                             controller: _plateNumberController,
                             enabled: widget.vehicleId == null,
                             decoration: const InputDecoration(
-                              labelText: 'Immatriculation *',
-                            ),
+                                labelText: 'Immatriculation *'),
                             textCapitalization: TextCapitalization.characters,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
                                 return "L'immatriculation est obligatoire";
                               }
                               return null;
@@ -178,11 +190,10 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                           // 2. Marque
                           TextFormField(
                             controller: _brandController,
-                            decoration: const InputDecoration(
-                              labelText: 'Marque *',
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
+                            decoration:
+                                const InputDecoration(labelText: 'Marque *'),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
                                 return 'La marque est obligatoire';
                               }
                               return null;
@@ -192,11 +203,10 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                           // 3. Modèle
                           TextFormField(
                             controller: _modelController,
-                            decoration: const InputDecoration(
-                              labelText: 'Modèle *',
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
+                            decoration:
+                                const InputDecoration(labelText: 'Modèle *'),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
                                 return 'Le modèle est obligatoire';
                               }
                               return null;
@@ -206,16 +216,13 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                           // 4. Année
                           TextFormField(
                             controller: _yearController,
-                            decoration: const InputDecoration(
-                              labelText: 'Année',
-                            ),
+                            decoration:
+                                const InputDecoration(labelText: 'Année'),
                             keyboardType: TextInputType.number,
-                            validator: (value) {
-                              if (value != null && value.trim().isNotEmpty) {
-                                final parsed = int.tryParse(value.trim());
-                                if (parsed == null) {
-                                  return 'Année invalide';
-                                }
+                            validator: (v) {
+                              if (v != null && v.trim().isNotEmpty) {
+                                final p = int.tryParse(v.trim());
+                                if (p == null) return 'Année invalide';
                               }
                               return null;
                             },
@@ -224,78 +231,63 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                           // 5. Couleur
                           TextFormField(
                             controller: _colorController,
-                            decoration: const InputDecoration(
-                              labelText: 'Couleur',
-                            ),
+                            decoration:
+                                const InputDecoration(labelText: 'Couleur'),
                           ),
                           const SizedBox(height: 16),
                           // 6. Carburant
                           DropdownButtonFormField<String>(
                             initialValue: _fuelType,
                             decoration: const InputDecoration(
-                              labelText: 'Carburant',
-                            ),
+                                labelText: 'Carburant'),
                             items: const [
                               DropdownMenuItem(
-                                value: null,
-                                child: Text('Non spécifié'),
-                              ),
+                                  value: null,
+                                  child: Text('Non spécifié')),
                               DropdownMenuItem(
-                                value: 'GASOLINE',
-                                child: Text('Essence'),
-                              ),
+                                  value: 'GASOLINE', child: Text('Essence')),
                               DropdownMenuItem(
-                                value: 'DIESEL',
-                                child: Text('Diesel'),
-                              ),
+                                  value: 'DIESEL', child: Text('Diesel')),
                               DropdownMenuItem(
-                                value: 'HYBRID',
-                                child: Text('Hybride'),
-                              ),
+                                  value: 'HYBRID', child: Text('Hybride')),
                               DropdownMenuItem(
-                                value: 'ELECTRIC',
-                                child: Text('Électrique'),
-                              ),
+                                  value: 'ELECTRIC',
+                                  child: Text('Électrique')),
                             ],
-                            onChanged: (value) =>
-                                setState(() => _fuelType = value),
+                            onChanged: (v) =>
+                                setState(() => _fuelType = v),
                           ),
                           const SizedBox(height: 16),
                           // 7. Transmission
                           DropdownButtonFormField<String>(
                             initialValue: _transmission,
                             decoration: const InputDecoration(
-                              labelText: 'Transmission',
-                            ),
+                                labelText: 'Transmission'),
                             items: const [
                               DropdownMenuItem(
-                                value: null,
-                                child: Text('Non spécifiée'),
-                              ),
+                                  value: null,
+                                  child: Text('Non spécifiée')),
                               DropdownMenuItem(
-                                value: 'MANUAL',
-                                child: Text('Manuelle'),
-                              ),
+                                  value: 'MANUAL',
+                                  child: Text('Manuelle')),
                               DropdownMenuItem(
-                                value: 'AUTOMATIC',
-                                child: Text('Automatique'),
-                              ),
+                                  value: 'AUTOMATIC',
+                                  child: Text('Automatique')),
                             ],
-                            onChanged: (value) =>
-                                setState(() => _transmission = value),
+                            onChanged: (v) =>
+                                setState(() => _transmission = v),
                           ),
                           const SizedBox(height: 16),
                           // 8. Places
                           TextFormField(
                             controller: _seatsController,
                             decoration: const InputDecoration(
-                              labelText: 'Nombre de places',
-                            ),
+                                labelText: 'Nombre de places'),
                             keyboardType: TextInputType.number,
-                            validator: (value) {
-                              if (value != null && value.trim().isNotEmpty) {
-                                final parsed = int.tryParse(value.trim());
-                                if (parsed == null || parsed <= 0) {
+                            validator: (v) {
+                              if (v != null && v.trim().isNotEmpty) {
+                                final p = int.tryParse(v.trim());
+                                if (p == null || p <= 0) {
                                   return 'Nombre de places invalide';
                                 }
                               }
@@ -306,12 +298,30 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                           // 9. VIN
                           TextFormField(
                             controller: _vinController,
-                            decoration: const InputDecoration(
-                              labelText: 'VIN',
-                            ),
+                            decoration:
+                                const InputDecoration(labelText: 'VIN'),
                             textCapitalization: TextCapitalization.characters,
                           ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 16),
+
+                          // 10. Propriétaire — sélecteur (création uniquement)
+                          if (widget.vehicleId == null) ...[
+                            EntitySelectorField<OwnerOption>(
+                              label: 'Propriétaire (optionnel)',
+                              items: _owners,
+                              labelOf: ownerLabel,
+                              initialValue: _selectedOwner,
+                              isLoading: _loadingOwners,
+                              prefixIcon: Icons.business_outlined,
+                              searchHint: 'Rechercher un propriétaire…',
+                              emptyMessage: 'Aucun propriétaire trouvé',
+                              onChanged: (o) =>
+                                  setState(() => _selectedOwner = o),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          const SizedBox(height: 16),
                           AppButton(
                             label: widget.vehicleId == null
                                 ? 'Créer le véhicule'

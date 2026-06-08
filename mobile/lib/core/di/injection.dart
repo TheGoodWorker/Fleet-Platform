@@ -39,6 +39,8 @@ import '../../features/documents/data/repositories/document_repository_impl.dart
 import '../../features/documents/domain/repositories/document_repository.dart';
 import '../../features/documents/presentation/cubit/documents_cubit.dart';
 
+import '../datasources/form_options_datasource.dart';
+
 /// Service locator GetIt
 final GetIt sl = GetIt.instance;
 
@@ -174,5 +176,10 @@ Future<void> configureDependencies() async {
 
   sl.registerFactory<DocumentsCubit>(
     () => DocumentsCubit(sl<DocumentRepository>()),
+  );
+
+  // ─── Form Options (sélecteurs dans les formulaires) ───────────────────────
+  sl.registerLazySingleton<FormOptionsDatasource>(
+    () => FormOptionsDatasource(sl<Dio>()),
   );
 }

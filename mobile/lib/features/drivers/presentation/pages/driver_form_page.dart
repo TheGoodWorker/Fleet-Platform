@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/datasources/form_options_datasource.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../shared/theme/app_theme.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
+import '../../../../shared/widgets/entity_selector_field.dart';
 import '../../../../shared/widgets/loading_view.dart';
 import '../cubit/driver_detail_cubit.dart';
 import '../cubit/driver_detail_state.dart';
@@ -40,8 +42,10 @@ class _DriverFormView extends StatefulWidget {
 class _DriverFormViewState extends State<_DriverFormView> {
   final _formKey = GlobalKey<FormState>();
 
-  // Create-only field
-  final _userIdController = TextEditingController();
+  // Sélecteur utilisateur (create only) — remplace le champ userId manuel
+  UserOption? _selectedUser;
+  List<UserOption> _userOptions = [];
+  bool _loadingUsers = true;
 
   // Shared editable fields
   final _idCardNumberController = TextEditingController();
@@ -52,8 +56,27 @@ class _DriverFormViewState extends State<_DriverFormView> {
   bool get _isCreating => widget.driverId == null;
 
   @override
+  void initState() {
+    super.initState();
+    if (_isCreating) _loadUserOptions();
+  }
+
+  Future<void> _loadUserOptions() async {
+    try {
+      final users = await sl<FormOptionsDatasource>().getDriverUsers();
+      if (mounted) {
+        setState(() {
+          _userOptions = users;
+          _loadingUsers = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingUsers = false);
+    }
+  }
+
+  @override
   void dispose() {
-    _userIdController.dispose();
     _idCardNumberController.dispose();
     _licenseNumberController.dispose();
     _addressController.dispose();
@@ -72,12 +95,13 @@ class _DriverFormViewState extends State<_DriverFormView> {
 
   void _submit(BuildContext context) {
     if (!_formKey.currentState!.validate()) return;
+    if (_isCreating && _selectedUser == null) return;
 
     final cubit = context.read<DriverDetailCubit>();
 
     if (_isCreating) {
       cubit.createDriver(
-        userId: _userIdController.text.trim(),
+        userId: _selectedUser!.id,
         idCardNumber: _idCardNumberController.text.trim().isEmpty
             ? null
             : _idCardNumberController.text.trim(),
@@ -162,20 +186,25 @@ class _DriverFormViewState extends State<_DriverFormView> {
                     const SizedBox(height: 20),
                   ],
 
-                  // ─── userId (create only) ───────────────────────────────
+                  // ─── Sélecteur utilisateur (create only) ───────────────
                   if (_isCreating) ...[
-                    AppTextField(
-                      label: 'ID Utilisateur (userId)*',
-                      hint: 'UUID du compte utilisateur',
-                      controller: _userIdController,
+                    EntitySelectorField<UserOption>(
+                      label: 'Compte utilisateur *',
+                      items: _userOptions,
+                      labelOf: userLabel,
+                      subtitleOf: userSubtitle,
+                      initialValue: _selectedUser,
+                      isLoading: _loadingUsers,
                       prefixIcon: Icons.person_outline,
-                      textInputAction: TextInputAction.next,
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Le userId est obligatoire';
-                        }
-                        return null;
-                      },
+                      searchHint: 'Rechercher par nom ou email…',
+                      emptyMessage: _loadingUsers
+                          ? 'Chargement…'
+                          : 'Aucun compte utilisateur trouvé.\n'
+                              'Créez d\'abord un compte depuis '
+                              'Administration > Utilisateurs.',
+                      onChanged: (u) => setState(() => _selectedUser = u),
+                      validator: (v) =>
+                          v == null ? 'Sélectionnez un compte utilisateur' : null,
                     ),
                     const SizedBox(height: 16),
                   ],
