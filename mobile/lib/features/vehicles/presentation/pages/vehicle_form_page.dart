@@ -9,9 +9,28 @@ import '../../../../shared/widgets/entity_selector_field.dart';
 import '../cubit/vehicle_detail_cubit.dart';
 import '../cubit/vehicle_detail_state.dart';
 
+// ── Catalogue marques / modèles ───────────────────────────────────────────────
+
+const Map<String, List<String>> _kBrands = {
+  'Suzuki':   ['Dzire', 'S-Presso', 'Swift', 'Alto'],
+  'Toyota':   ['Corolla', 'Yaris', 'Rush'],
+  'Hyundai':  ['Accent', 'Elantra', 'Tucson'],
+  'Kia':      ['Rio', 'Pegas', 'Sportage'],
+  'Nissan':   ['Sunny', 'Sentra', 'Patrol'],
+  'Renault':  ['Logan', 'Duster'],
+  'Changan':  ['Alsvin', 'CS35', 'CS55'],
+  'BYD':      ['Dolphin', 'Atto 3'],
+  'Wuling':   ['Bingo'],
+  'Dongfeng': ['Nano Box'],
+  'MG':       ['ZS'],
+  'Kaiyi':    ['E5', 'X3', 'X3 Pro'],
+};
+const _kAutre = 'Autre';
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 class VehicleFormPage extends StatefulWidget {
   const VehicleFormPage({super.key, this.vehicleId});
-
   final String? vehicleId;
 
   @override
@@ -23,19 +42,24 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
 
   final _formKey = GlobalKey<FormState>();
 
+  // Champs texte conservés
   final _plateNumberController = TextEditingController();
-  final _brandController = TextEditingController();
-  final _modelController = TextEditingController();
-  final _yearController = TextEditingController();
-  final _colorController = TextEditingController();
-  final _seatsController = TextEditingController();
-  final _vinController = TextEditingController();
+  final _yearController        = TextEditingController();
+  final _colorController       = TextEditingController();
+  final _vinController         = TextEditingController();
 
+  // Saisie libre pour marque / modèle « Autre »
+  final _brandOtherController  = TextEditingController();
+  final _modelOtherController  = TextEditingController();
+
+  // Sélections dropdown
+  String? _selectedBrand;
+  String? _selectedModel;
   String? _fuelType;
   String? _transmission;
   OwnerOption? _selectedOwner;
 
-  bool _prefilled = false;
+  bool _prefilled    = false;
   List<OwnerOption> _owners = [];
   bool _loadingOwners = true;
 
@@ -59,70 +83,95 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
   @override
   void dispose() {
     _plateNumberController.dispose();
-    _brandController.dispose();
-    _modelController.dispose();
     _yearController.dispose();
     _colorController.dispose();
-    _seatsController.dispose();
     _vinController.dispose();
+    _brandOtherController.dispose();
+    _modelOtherController.dispose();
     super.dispose();
   }
+
+  // ── Pré-remplissage (mode édition) ────────────────────────────────────────
 
   void _prefillFromState(VehicleDetailLoaded state) {
     if (_prefilled) return;
     _prefilled = true;
     final v = state.vehicle;
+
     _plateNumberController.text = v.plateNumber;
-    _brandController.text = v.brand;
-    _modelController.text = v.model;
-    _yearController.text = v.year != 0 ? '${v.year}' : '';
+    _yearController.text  = v.year != 0 ? '${v.year}' : '';
     _colorController.text = v.color;
-    _seatsController.text = v.seats != null ? '${v.seats}' : '';
-    _vinController.text = v.vin ?? '';
-    _fuelType = v.fuelType.isNotEmpty ? v.fuelType : null;
+    _vinController.text   = v.vin ?? '';
+    _fuelType    = v.fuelType.isNotEmpty ? v.fuelType : null;
     _transmission = v.transmission;
+
+    // Marque : catalogue ou "Autre"
+    if (_kBrands.containsKey(v.brand)) {
+      _selectedBrand = v.brand;
+      final models = _kBrands[v.brand]!;
+      if (models.contains(v.model)) {
+        _selectedModel = v.model;
+      } else {
+        _selectedModel = _kAutre;
+        _modelOtherController.text = v.model;
+      }
+    } else {
+      _selectedBrand = _kAutre;
+      _brandOtherController.text = v.brand;
+      _modelOtherController.text = v.model;
+    }
   }
+
+  // ── Soumission ────────────────────────────────────────────────────────────
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
-    final plateNumber = _plateNumberController.text.trim();
-    final brand = _brandController.text.trim();
-    final model = _modelController.text.trim();
-    final yearText = _yearController.text.trim();
-    final colorText = _colorController.text.trim();
-    final seatsText = _seatsController.text.trim();
-    final vinText = _vinController.text.trim();
+    // Résoudre marque effective
+    final String brand;
+    final String model;
 
-    final year = yearText.isNotEmpty ? int.tryParse(yearText) : null;
-    final seats = seatsText.isNotEmpty ? int.tryParse(seatsText) : null;
+    if (_selectedBrand == _kAutre) {
+      brand = _brandOtherController.text.trim();
+      model = _modelOtherController.text.trim();
+    } else {
+      brand = _selectedBrand!;
+      model = _selectedModel == _kAutre
+          ? _modelOtherController.text.trim()
+          : _selectedModel!;
+    }
+
+    final yearText  = _yearController.text.trim();
+    final colorText = _colorController.text.trim();
+    final vinText   = _vinController.text.trim();
+    final year      = yearText.isNotEmpty ? int.tryParse(yearText) : null;
 
     if (widget.vehicleId == null) {
       _cubit.createVehicle(
-        plateNumber: plateNumber,
-        brand: brand,
-        model: model,
-        year: year,
-        color: colorText.isNotEmpty ? colorText : null,
-        fuelType: _fuelType,
+        plateNumber: _plateNumberController.text.trim(),
+        brand:       brand,
+        model:       model,
+        year:        year,
+        color:       colorText.isNotEmpty ? colorText : null,
+        fuelType:    _fuelType,
         transmission: _transmission,
-        seats: seats,
-        vin: vinText.isNotEmpty ? vinText : null,
-        ownerId: _selectedOwner?.id,
+        ownerId:     _selectedOwner?.id,
+        // seats intentionnellement omis
       );
     } else {
       _cubit.updateVehicle(widget.vehicleId!, {
         'brand': brand,
         'model': model,
-        if (year != null) 'year': year,
-        if (colorText.isNotEmpty) 'color': colorText,
-        if (_fuelType != null) 'fuelType': _fuelType,
-        if (_transmission != null) 'transmission': _transmission,
-        if (seats != null) 'seats': seats,
-        if (vinText.isNotEmpty) 'vin': vinText,
+        if (year != null)              'year':         year,
+        if (colorText.isNotEmpty)      'color':        colorText,
+        if (_fuelType != null)         'fuelType':     _fuelType,
+        if (_transmission != null)     'transmission': _transmission,
+        if (vinText.isNotEmpty)        'vin':          vinText,
       });
     }
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -131,20 +180,16 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
       child: BlocConsumer<VehicleDetailCubit, VehicleDetailState>(
         listener: (context, state) {
           if (state is VehicleDetailActionSuccess) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: AppColors.success,
-              ),
-            );
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.success,
+            ));
             Navigator.of(context).pop();
           } else if (state is VehicleDetailActionError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: AppColors.error,
-              ),
-            );
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.error,
+            ));
           } else if (state is VehicleDetailLoaded && widget.vehicleId != null) {
             setState(() => _prefillFromState(state));
           }
@@ -156,11 +201,9 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Text(
-                widget.vehicleId == null
-                    ? 'Nouveau véhicule'
-                    : 'Modifier le véhicule',
-              ),
+              title: Text(widget.vehicleId == null
+                  ? 'Nouveau véhicule'
+                  : 'Modifier le véhicule'),
             ),
             body: isLoadingExisting
                 ? const Center(
@@ -172,48 +215,124 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 1. Immatriculation
+                          // ── 1. Immatriculation ────────────────────────
                           TextFormField(
                             controller: _plateNumberController,
                             enabled: widget.vehicleId == null,
                             decoration: const InputDecoration(
                                 labelText: 'Immatriculation *'),
                             textCapitalization: TextCapitalization.characters,
-                            validator: (v) {
-                              if (v == null || v.trim().isEmpty) {
-                                return "L'immatriculation est obligatoire";
-                              }
-                              return null;
-                            },
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? "L'immatriculation est obligatoire"
+                                : null,
                           ),
                           const SizedBox(height: 16),
-                          // 2. Marque
-                          TextFormField(
-                            controller: _brandController,
+
+                          // ── 2. Marque (sélecteur) ─────────────────────
+                          DropdownButtonFormField<String>(
+                            key: ValueKey('brand-$_selectedBrand'),
+                            initialValue: _selectedBrand,
                             decoration:
                                 const InputDecoration(labelText: 'Marque *'),
-                            validator: (v) {
-                              if (v == null || v.trim().isEmpty) {
-                                return 'La marque est obligatoire';
-                              }
-                              return null;
-                            },
+                            hint: const Text('Sélectionner une marque'),
+                            items: [
+                              ..._kBrands.keys.map(
+                                (b) => DropdownMenuItem(
+                                    value: b, child: Text(b)),
+                              ),
+                              const DropdownMenuItem(
+                                value: _kAutre,
+                                child: Text('Autre (saisie libre)'),
+                              ),
+                            ],
+                            validator: (v) => v == null
+                                ? 'La marque est obligatoire'
+                                : null,
+                            onChanged: (v) => setState(() {
+                              _selectedBrand = v;
+                              _selectedModel = null;
+                              _brandOtherController.clear();
+                              _modelOtherController.clear();
+                            }),
                           ),
+
+                          // Marque libre si "Autre"
+                          if (_selectedBrand == _kAutre) ...[
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _brandOtherController,
+                              decoration: const InputDecoration(
+                                  labelText: 'Marque (préciser) *'),
+                              textCapitalization: TextCapitalization.words,
+                              validator: (v) =>
+                                  (v == null || v.trim().isEmpty)
+                                      ? 'Précisez la marque'
+                                      : null,
+                            ),
+                          ],
                           const SizedBox(height: 16),
-                          // 3. Modèle
-                          TextFormField(
-                            controller: _modelController,
-                            decoration:
-                                const InputDecoration(labelText: 'Modèle *'),
-                            validator: (v) {
-                              if (v == null || v.trim().isEmpty) {
-                                return 'Le modèle est obligatoire';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          // 4. Année
+
+                          // ── 3. Modèle (sélecteur dépendant) ───────────
+                          if (_selectedBrand != null) ...[
+                            // Marque connue → dropdown des modèles
+                            if (_selectedBrand != _kAutre)
+                              DropdownButtonFormField<String>(
+                                key: ValueKey('model-$_selectedBrand-$_selectedModel'),
+                                initialValue: _selectedModel,
+                                decoration: const InputDecoration(
+                                    labelText: 'Modèle *'),
+                                hint: const Text('Sélectionner un modèle'),
+                                items: [
+                                  ..._kBrands[_selectedBrand]!.map(
+                                    (m) => DropdownMenuItem(
+                                        value: m, child: Text(m)),
+                                  ),
+                                  const DropdownMenuItem(
+                                    value: _kAutre,
+                                    child: Text('Autre (saisie libre)'),
+                                  ),
+                                ],
+                                validator: (v) => v == null
+                                    ? 'Le modèle est obligatoire'
+                                    : null,
+                                onChanged: (v) => setState(() {
+                                  _selectedModel = v;
+                                  _modelOtherController.clear();
+                                }),
+                              )
+                            // Marque "Autre" → saisie libre du modèle
+                            else
+                              TextFormField(
+                                controller: _modelOtherController,
+                                decoration: const InputDecoration(
+                                    labelText: 'Modèle *'),
+                                textCapitalization: TextCapitalization.words,
+                                validator: (v) =>
+                                    (v == null || v.trim().isEmpty)
+                                        ? 'Le modèle est obligatoire'
+                                        : null,
+                              ),
+
+                            // Modèle libre si modèle "Autre" pour marque connue
+                            if (_selectedBrand != _kAutre &&
+                                _selectedModel == _kAutre) ...[
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _modelOtherController,
+                                decoration: const InputDecoration(
+                                    labelText: 'Modèle (préciser) *'),
+                                textCapitalization: TextCapitalization.words,
+                                validator: (v) =>
+                                    (v == null || v.trim().isEmpty)
+                                        ? 'Précisez le modèle'
+                                        : null,
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                          ] else
+                            const SizedBox(height: 16),
+
+                          // ── 4. Année ──────────────────────────────────
                           TextFormField(
                             controller: _yearController,
                             decoration:
@@ -228,15 +347,18 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                             },
                           ),
                           const SizedBox(height: 16),
-                          // 5. Couleur
+
+                          // ── 5. Couleur ────────────────────────────────
                           TextFormField(
                             controller: _colorController,
                             decoration:
                                 const InputDecoration(labelText: 'Couleur'),
                           ),
                           const SizedBox(height: 16),
-                          // 6. Carburant
+
+                          // ── 6. Carburant ──────────────────────────────
                           DropdownButtonFormField<String>(
+                            key: ValueKey(_fuelType),
                             initialValue: _fuelType,
                             decoration: const InputDecoration(
                                 labelText: 'Carburant'),
@@ -245,11 +367,14 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                                   value: null,
                                   child: Text('Non spécifié')),
                               DropdownMenuItem(
-                                  value: 'GASOLINE', child: Text('Essence')),
+                                  value: 'GASOLINE',
+                                  child: Text('Essence')),
                               DropdownMenuItem(
-                                  value: 'DIESEL', child: Text('Diesel')),
+                                  value: 'DIESEL',
+                                  child: Text('Diesel')),
                               DropdownMenuItem(
-                                  value: 'HYBRID', child: Text('Hybride')),
+                                  value: 'HYBRID',
+                                  child: Text('Hybride')),
                               DropdownMenuItem(
                                   value: 'ELECTRIC',
                                   child: Text('Électrique')),
@@ -258,8 +383,10 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                                 setState(() => _fuelType = v),
                           ),
                           const SizedBox(height: 16),
-                          // 7. Transmission
+
+                          // ── 7. Transmission ───────────────────────────
                           DropdownButtonFormField<String>(
+                            key: ValueKey(_transmission),
                             initialValue: _transmission,
                             decoration: const InputDecoration(
                                 labelText: 'Transmission'),
@@ -278,33 +405,18 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                                 setState(() => _transmission = v),
                           ),
                           const SizedBox(height: 16),
-                          // 8. Places
-                          TextFormField(
-                            controller: _seatsController,
-                            decoration: const InputDecoration(
-                                labelText: 'Nombre de places'),
-                            keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v != null && v.trim().isNotEmpty) {
-                                final p = int.tryParse(v.trim());
-                                if (p == null || p <= 0) {
-                                  return 'Nombre de places invalide';
-                                }
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          // 9. VIN
+
+                          // ── 8. VIN (optionnel) ────────────────────────
                           TextFormField(
                             controller: _vinController,
                             decoration:
-                                const InputDecoration(labelText: 'VIN'),
+                                const InputDecoration(labelText: 'VIN (optionnel)'),
                             textCapitalization: TextCapitalization.characters,
+                            // Pas de validator : champ libre non obligatoire
                           ),
                           const SizedBox(height: 16),
 
-                          // 10. Propriétaire — sélecteur (création uniquement)
+                          // ── 9. Propriétaire (création uniquement) ─────
                           if (widget.vehicleId == null) ...[
                             EntitySelectorField<OwnerOption>(
                               label: 'Propriétaire (optionnel)',
@@ -321,7 +433,7 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
                             const SizedBox(height: 16),
                           ],
 
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 8),
                           AppButton(
                             label: widget.vehicleId == null
                                 ? 'Créer le véhicule'
