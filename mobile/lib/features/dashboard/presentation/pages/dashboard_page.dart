@@ -1147,6 +1147,7 @@ class _QuickActions extends StatelessWidget {
     (Icons.post_add_outlined, 'Contrat', '/contracts/new',
      Color(0xFF7C3AED)),
     (Icons.payments_outlined, 'Paiement', AppRoutes.payments, _C.amber),
+    (Icons.car_crash_outlined, 'Incident', AppRoutes.incidents, _C.red),
   ];
 
   @override
