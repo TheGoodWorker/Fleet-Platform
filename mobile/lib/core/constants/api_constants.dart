@@ -21,6 +21,8 @@ class ApiConstants {
   static String vehicleById(String id) => '/vehicles/$id';
   static String vehicleStatus(String id) => '/vehicles/$id/status';
   static String vehicleAssignManager(String id) => '/vehicles/$id/assign-manager';
+  static String vehicleAssignments(String id) => '/vehicles/$id/assignments';
+  static String vehicleAssignDriver(String id) => '/vehicles/$id/assign-driver';
 
   // ─── Drivers ─────────────────────────────────────────────────────────────
   static const String drivers = '/drivers';
@@ -28,6 +30,7 @@ class ApiConstants {
   static String driverStatus(String id) => '/drivers/$id/status';
   static String driverValidateKyc(String id) => '/drivers/$id/validate-kyc';
   static String driverValidateField(String id) => '/drivers/$id/validate-field';
+  static String driverAssignments(String id) => '/drivers/$id/assignments';
 
   // ─── Contracts ───────────────────────────────────────────────────────────
   static const String contracts = '/contracts';

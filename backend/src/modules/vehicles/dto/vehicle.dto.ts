@@ -42,6 +42,17 @@ export class VehicleFiltersDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() search?: string;
 }
 
+export class AssignDriverDto {
+  @ApiProperty({ description: 'ID du chauffeur à affecter' })
+  @IsUUID()
+  driverId: string;
+
+  @ApiPropertyOptional({ description: 'Notes' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 /** G-02 : statut via body (body → ValidationPipe, Swagger propre, génération Flutter correcte) */
 export class UpdateVehicleStatusDto {
   @ApiProperty({ enum: VehicleStatus, description: 'Nouveau statut du véhicule' })

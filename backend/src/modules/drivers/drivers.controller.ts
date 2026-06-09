@@ -111,6 +111,18 @@ export class DriversController {
     return this.service.validateField(id, actor.id, dto);
   }
 
+  @Get(':id/assignments')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Historique des affectations véhicule d\'un chauffeur' })
+  @ApiQuery({ name: 'page', required: false }) @ApiQuery({ name: 'limit', required: false })
+  getVehicleAssignments(
+    @Param('id') id: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.service.getVehicleAssignments(id, page, limit);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN)
   @RequirePermission(Perm.MANAGE_USERS)

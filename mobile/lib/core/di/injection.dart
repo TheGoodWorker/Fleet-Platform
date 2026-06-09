@@ -47,6 +47,11 @@ import '../../features/incidents/domain/repositories/incident_repository.dart';
 import '../../features/incidents/presentation/cubit/incident_detail_cubit.dart';
 import '../../features/incidents/presentation/cubit/incidents_cubit.dart';
 
+import '../../features/assignments/data/datasources/assignment_remote_datasource.dart';
+import '../../features/assignments/data/repositories/assignment_repository_impl.dart';
+import '../../features/assignments/domain/repositories/assignment_repository.dart';
+import '../../features/assignments/presentation/cubit/assignments_cubit.dart';
+
 import '../../features/dashboard/data/datasources/dashboard_datasource.dart';
 import '../../features/dashboard/data/repositories/dashboard_repository_impl.dart';
 import '../../features/dashboard/domain/repositories/dashboard_repository.dart';
@@ -209,6 +214,19 @@ Future<void> configureDependencies() async {
 
   sl.registerFactory<IncidentDetailCubit>(
     () => IncidentDetailCubit(sl<IncidentRepository>()),
+  );
+
+  // ─── Assignments ──────────────────────────────────────────────────────────
+  sl.registerLazySingleton<AssignmentRemoteDataSource>(
+    () => AssignmentRemoteDataSource(sl<Dio>()),
+  );
+
+  sl.registerLazySingleton<AssignmentRepository>(
+    () => AssignmentRepositoryImpl(sl<AssignmentRemoteDataSource>()),
+  );
+
+  sl.registerFactory<AssignmentsCubit>(
+    () => AssignmentsCubit(sl<AssignmentRepository>()),
   );
 
   // ─── Dashboard — KPI ──────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { UserRole, VehicleStatus } from '@prisma/client';
 import { VehiclesService } from './vehicles.service';
-import { CreateVehicleDto, UpdateVehicleDto, AssignManagerDto, VehicleFiltersDto, UpdateVehicleStatusDto } from './dto/vehicle.dto';
+import { CreateVehicleDto, UpdateVehicleDto, AssignManagerDto, VehicleFiltersDto, UpdateVehicleStatusDto, AssignDriverDto } from './dto/vehicle.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -62,6 +62,34 @@ export class VehiclesController {
   @ApiOperation({ summary: 'Affecter un manager au véhicule' })
   assignManager(@Param('id') id: string, @Body() dto: AssignManagerDto) {
     return this.service.assignManager(id, dto);
+  }
+
+  @Get(':id/assignments')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Historique des affectations chauffeur d\'un véhicule' })
+  @ApiQuery({ name: 'page', required: false }) @ApiQuery({ name: 'limit', required: false })
+  getDriverAssignments(
+    @Param('id') id: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.service.getDriverAssignments(id, page, limit);
+  }
+
+  @Post(':id/assign-driver')
+  @Roles(UserRole.SUPER_MANAGER)
+  @RequirePermission(Perm.ASSIGN_VEHICLE)
+  @ApiOperation({ summary: 'Affecter un chauffeur au véhicule' })
+  assignDriver(@Param('id') id: string, @Body() dto: AssignDriverDto) {
+    return this.service.assignDriver(id, dto);
+  }
+
+  @Delete(':id/assign-driver')
+  @Roles(UserRole.SUPER_MANAGER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mettre fin à l\'affectation chauffeur active' })
+  unassignDriver(@Param('id') id: string) {
+    return this.service.unassignDriver(id);
   }
 
   /** G-02 : status migré de @Query vers @Body avec DTO validé */

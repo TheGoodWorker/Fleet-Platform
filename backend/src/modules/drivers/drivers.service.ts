@@ -259,6 +259,32 @@ export class DriversService {
       .catch(() => undefined);
   }
 
+  // ─── Historique des affectations véhicule d'un chauffeur ─────────────────
+
+  async getVehicleAssignments(driverId: string, page = 1, limit = 20) {
+    await this.findById(driverId);
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.prisma.vehicleDriverAssignment.findMany({
+        where: { driverId },
+        include: {
+          vehicle: { select: { id: true, plateNumber: true, brand: true, model: true } },
+          driver: {
+            select: {
+              id: true,
+              user: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+        orderBy: { startDate: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.vehicleDriverAssignment.count({ where: { driverId } }),
+    ]);
+    return { data, meta: { page, limit, total } };
+  }
+
   async softDelete(id: string) {
     const driver = await this.findById(id);
     return this.prisma.user.update({

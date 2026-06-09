@@ -1144,10 +1144,10 @@ class _QuickActions extends StatelessWidget {
   static const _actions = [
     (Icons.add_box_outlined, 'Véhicule', '/vehicles/new', _C.blue),
     (Icons.person_add_outlined, 'Chauffeur', '/drivers/new', _C.green),
-    (Icons.post_add_outlined, 'Contrat', '/contracts/new',
-     Color(0xFF7C3AED)),
+    (Icons.post_add_outlined, 'Contrat', '/contracts/new', Color(0xFF7C3AED)),
     (Icons.payments_outlined, 'Paiement', AppRoutes.payments, _C.amber),
     (Icons.car_crash_outlined, 'Incident', AppRoutes.incidents, _C.red),
+    (Icons.swap_horiz_outlined, 'Affecter', AppRoutes.assignments, _C.blue),
   ];
 
   @override
@@ -1159,45 +1159,51 @@ class _QuickActions extends StatelessWidget {
           const Text(
             'Actions rapides',
             style: TextStyle(
-              fontSize: 14, fontWeight: FontWeight.w700, color: _C.text),
+                fontSize: 14, fontWeight: FontWeight.w700, color: _C.text),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: _actions.map((a) {
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: InkWell(
-                    onTap: () => context.push(a.$3),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: a.$4.withValues(alpha: 0.07),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: a.$4.withValues(alpha: 0.2)),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(a.$1, size: 22, color: a.$4),
-                          const SizedBox(height: 6),
-                          Text(
-                            a.$2,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: a.$4,
+          LayoutBuilder(
+            builder: (ctx, constraints) {
+              // 3 items par rangée, 2 espaces de 6px entre eux
+              final itemW = (constraints.maxWidth - 2 * 6) / 3;
+              return Wrap(
+                spacing: 6,
+                runSpacing: 10,
+                children: _actions.map((a) {
+                  return SizedBox(
+                    width: itemW,
+                    child: InkWell(
+                      onTap: () => ctx.push(a.$3),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: a.$4.withValues(alpha: 0.07),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: a.$4.withValues(alpha: 0.2)),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(a.$1, size: 22, color: a.$4),
+                            const SizedBox(height: 6),
+                            Text(
+                              a.$2,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: a.$4,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                }).toList(),
               );
-            }).toList(),
+            },
           ),
         ],
       ),

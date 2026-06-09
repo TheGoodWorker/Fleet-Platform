@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { User, UserRole, VehicleStatus } from '@prisma/client';
-import { CreateVehicleDto, UpdateVehicleDto, AssignManagerDto, VehicleFiltersDto } from './dto/vehicle.dto';
+import { User, UserRole, VehicleStatus, AssignmentSource } from '@prisma/client';
+import { CreateVehicleDto, UpdateVehicleDto, AssignManagerDto, VehicleFiltersDto, AssignDriverDto } from './dto/vehicle.dto';
 
 const VEHICLE_INCLUDE = {
   owner: { select: { id: true, name: true, type: true } },
@@ -104,6 +104,89 @@ export class VehiclesService {
     return this.prisma.vehicle.update({
       where: { id: vehicleId },
       data: { currentManagerId: dto.managerId },
+      include: VEHICLE_INCLUDE,
+    });
+  }
+
+  // ─── Affectations chauffeur ────────────────────────────────────────────────
+
+  async getDriverAssignments(vehicleId: string, page = 1, limit = 20) {
+    await this.findById(vehicleId);
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.prisma.vehicleDriverAssignment.findMany({
+        where: { vehicleId },
+        include: {
+          driver: {
+            select: {
+              id: true,
+              user: { select: { firstName: true, lastName: true, phone: true } },
+            },
+          },
+          vehicle: { select: { id: true, plateNumber: true, brand: true, model: true } },
+        },
+        orderBy: { startDate: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.vehicleDriverAssignment.count({ where: { vehicleId } }),
+    ]);
+    return { data, meta: { page, limit, total } };
+  }
+
+  async assignDriver(vehicleId: string, dto: AssignDriverDto) {
+    const vehicle = await this.findById(vehicleId);
+
+    const driver = await this.prisma.driver.findFirst({ where: { id: dto.driverId } });
+    if (!driver) throw new NotFoundException('Chauffeur introuvable');
+
+    // Clore l'affectation active si elle existe
+    if (vehicle.currentDriverId) {
+      await this.prisma.vehicleDriverAssignment.updateMany({
+        where: { vehicleId, isActive: true },
+        data: { isActive: false, endDate: new Date() },
+      });
+    }
+
+    // Créer la nouvelle affectation
+    const assignment = await this.prisma.vehicleDriverAssignment.create({
+      data: {
+        vehicleId,
+        driverId: dto.driverId,
+        startDate: new Date(),
+        isActive: true,
+        source: AssignmentSource.MANAGER,
+        notes: dto.notes,
+      },
+      include: {
+        driver: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
+        vehicle: { select: { id: true, plateNumber: true, brand: true, model: true } },
+      },
+    });
+
+    // Mettre à jour le champ dénormalisé
+    await this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: { currentDriverId: dto.driverId },
+    });
+
+    return assignment;
+  }
+
+  async unassignDriver(vehicleId: string) {
+    const vehicle = await this.findById(vehicleId);
+    if (!vehicle.currentDriverId) {
+      throw new NotFoundException('Aucune affectation chauffeur active pour ce véhicule');
+    }
+
+    await this.prisma.vehicleDriverAssignment.updateMany({
+      where: { vehicleId, isActive: true },
+      data: { isActive: false, endDate: new Date() },
+    });
+
+    return this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: { currentDriverId: null },
       include: VEHICLE_INCLUDE,
     });
   }
