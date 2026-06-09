@@ -39,4 +39,7 @@ class IncidentsCubit extends Cubit<IncidentsState> {
       status: state is IncidentsLoaded
           ? (state as IncidentsLoaded).statusFilter
           : null);
+
+  /// Remet les deux filtres à null en un seul appel API.
+  void resetFilters() => load();
 }

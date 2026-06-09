@@ -33,7 +33,10 @@ class _IncidentsPageState extends State<IncidentsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Incidents')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/incidents/new'),
+        onPressed: () {
+          final cubit = context.read<IncidentsCubit>();
+          context.push('/incidents/new').then((_) { if (mounted) cubit.refresh(); });
+        },
         backgroundColor: AppColors.error,
         foregroundColor: Colors.white,
         tooltip: 'Déclarer un incident',
@@ -51,6 +54,10 @@ class _IncidentsPageState extends State<IncidentsPage> {
             onTypeChanged: (t) {
               setState(() => _type = t);
               context.read<IncidentsCubit>().filterByType(t?.value);
+            },
+            onResetFilters: () {
+              setState(() { _status = null; _type = null; });
+              context.read<IncidentsCubit>().resetFilters();
             },
           ),
           const Divider(height: 1),
@@ -84,8 +91,11 @@ class _IncidentsPageState extends State<IncidentsPage> {
                           const SizedBox(height: 8),
                       itemBuilder: (context, i) => IncidentCard(
                         incident: incidents[i],
-                        onTap: () =>
-                            context.push('/incidents/${incidents[i].id}'),
+                        onTap: () {
+                          final cubit = context.read<IncidentsCubit>();
+                          context.push('/incidents/${incidents[i].id}')
+                              .then((_) { if (mounted) cubit.refresh(); });
+                        },
                       ),
                     ),
                   ),
@@ -106,12 +116,14 @@ class _Filters extends StatelessWidget {
     required this.type,
     required this.onStatusChanged,
     required this.onTypeChanged,
+    required this.onResetFilters,
   });
 
   final IncidentStatus? status;
   final IncidentType? type;
   final ValueChanged<IncidentStatus?> onStatusChanged;
   final ValueChanged<IncidentType?> onTypeChanged;
+  final VoidCallback onResetFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -125,10 +137,7 @@ class _Filters extends StatelessWidget {
             label: 'Tous',
             selected: status == null && type == null,
             color: AppColors.primary,
-            onTap: () {
-              onStatusChanged(null);
-              onTypeChanged(null);
-            },
+            onTap: onResetFilters,
           ),
           const SizedBox(width: 6),
           ...IncidentStatus.values.map((s) => Padding(
