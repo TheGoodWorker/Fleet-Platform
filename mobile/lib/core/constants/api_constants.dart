@@ -46,6 +46,13 @@ class ApiConstants {
   static const String notificationsUnreadCount = '/notifications/unread-count';
   static String notificationMarkRead(String id) => '/notifications/$id/read';
 
+  // ─── Incidents ───────────────────────────────────────────────────────────
+  static const String incidents = '/incidents';
+  static String incidentById(String id) => '/incidents/$id';
+  static String incidentInProgress(String id) => '/incidents/$id/in-progress';
+  static String incidentResolve(String id) => '/incidents/$id/resolve';
+  static String incidentClose(String id) => '/incidents/$id/close';
+
   // ─── Documents ───────────────────────────────────────────────────────────
   static const String documents = '/documents';
   static String documentById(String id) => '/documents/$id';

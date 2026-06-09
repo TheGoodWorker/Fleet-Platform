@@ -41,6 +41,12 @@ import '../../features/documents/presentation/cubit/documents_cubit.dart';
 
 import '../datasources/form_options_datasource.dart';
 
+import '../../features/incidents/data/datasources/incident_remote_datasource.dart';
+import '../../features/incidents/data/repositories/incident_repository_impl.dart';
+import '../../features/incidents/domain/repositories/incident_repository.dart';
+import '../../features/incidents/presentation/cubit/incident_detail_cubit.dart';
+import '../../features/incidents/presentation/cubit/incidents_cubit.dart';
+
 import '../../features/dashboard/data/datasources/dashboard_datasource.dart';
 import '../../features/dashboard/data/repositories/dashboard_repository_impl.dart';
 import '../../features/dashboard/domain/repositories/dashboard_repository.dart';
@@ -186,6 +192,23 @@ Future<void> configureDependencies() async {
   // ─── Form Options (sélecteurs dans les formulaires) ───────────────────────
   sl.registerLazySingleton<FormOptionsDatasource>(
     () => FormOptionsDatasource(sl<Dio>()),
+  );
+
+  // ─── Incidents ────────────────────────────────────────────────────────────
+  sl.registerLazySingleton<IncidentRemoteDataSource>(
+    () => IncidentRemoteDataSource(sl<Dio>()),
+  );
+
+  sl.registerLazySingleton<IncidentRepository>(
+    () => IncidentRepositoryImpl(sl<IncidentRemoteDataSource>()),
+  );
+
+  sl.registerFactory<IncidentsCubit>(
+    () => IncidentsCubit(sl<IncidentRepository>()),
+  );
+
+  sl.registerFactory<IncidentDetailCubit>(
+    () => IncidentDetailCubit(sl<IncidentRepository>()),
   );
 
   // ─── Dashboard — KPI ──────────────────────────────────────────────────────

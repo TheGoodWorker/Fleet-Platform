@@ -28,6 +28,11 @@ import '../features/vehicles/presentation/cubit/vehicles_cubit.dart';
 import '../features/vehicles/presentation/pages/vehicle_detail_page.dart';
 import '../features/vehicles/presentation/pages/vehicle_form_page.dart';
 import '../features/vehicles/presentation/pages/vehicles_page.dart';
+import '../features/incidents/presentation/cubit/incident_detail_cubit.dart';
+import '../features/incidents/presentation/cubit/incidents_cubit.dart';
+import '../features/incidents/presentation/pages/incident_detail_page.dart';
+import '../features/incidents/presentation/pages/incident_form_page.dart';
+import '../features/incidents/presentation/pages/incidents_page.dart';
 import '../core/di/injection.dart';
 import '../shared/widgets/loading_view.dart';
 
@@ -43,6 +48,7 @@ class AppRoutes {
   static const String documents = '/documents';
   static const String owner = '/owner';
   static const String notifications = '/notifications';
+  static const String incidents = '/incidents';
 
   static String vehicleDetail(String id) => '/vehicles/$id';
   static const String vehicleNew = '/vehicles/new';
@@ -208,6 +214,34 @@ GoRouter createRouter(AuthBloc authBloc) {
               create: (_) => sl<DocumentsCubit>(),
               child: const DocumentsPage(),
             ),
+          ),
+
+          // ── Incidents ─────────────────────────────────────────────
+          GoRoute(
+            path: AppRoutes.incidents,
+            name: 'incidents',
+            builder: (context, state) => BlocProvider(
+              create: (_) => sl<IncidentsCubit>(),
+              child: const IncidentsPage(),
+            ),
+            routes: [
+              GoRoute(
+                path: 'new',
+                name: 'incident-new',
+                builder: (context, state) => const IncidentFormPage(),
+              ),
+              GoRoute(
+                path: ':id',
+                name: 'incident-detail',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return BlocProvider(
+                    create: (_) => sl<IncidentDetailCubit>()..load(id),
+                    child: IncidentDetailPage(incidentId: id),
+                  );
+                },
+              ),
+            ],
           ),
           GoRoute(
             path: AppRoutes.owner,
