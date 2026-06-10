@@ -41,7 +41,7 @@ export class ChargesService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: ChargeFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: ChargeFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
 
@@ -50,6 +50,11 @@ export class ChargesService {
     if (filters.driverId) where.driverId = filters.driverId;
     if (filters.type) where.type = filters.type;
     if (filters.status) where.status = filters.status;
+
+    // IDOR — MANAGER ne voit que les charges des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.charge.findMany({
@@ -61,9 +66,20 @@ export class ChargesService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const charge = await this.prisma.charge.findFirst({ where: { id }, include: CHARGE_INCLUDE });
     if (!charge) throw new NotFoundException(`Charge ${id} introuvable`);
+
+    // IDOR — MANAGER ne voit que les charges des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: charge.vehicleId, currentManagerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw new ForbiddenException('Accès refusé — cette charge est hors de votre périmètre');
+      }
+    }
     return charge;
   }
 

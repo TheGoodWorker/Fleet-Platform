@@ -1,8 +1,8 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
-  ImmobilizationStatus, NotificationType, NotificationPriority, User,
+  ImmobilizationStatus, NotificationType, NotificationPriority, User, UserRole,
   VehicleAvailabilityEventType, VehicleStatus, DayStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -35,13 +35,18 @@ export class ImmobilizationsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: ImmobilizationFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: ImmobilizationFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
     if (filters.contractId) where.contractId = filters.contractId;
     if (filters.status) where.status = filters.status;
     if (filters.responsible) where.responsible = filters.responsible;
+
+    // IDOR — MANAGER ne voit que les immobilisations des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.immobilization.findMany({
@@ -54,12 +59,23 @@ export class ImmobilizationsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const record = await this.prisma.immobilization.findFirst({
       where: { id },
       include: IMMOB_INCLUDE,
     });
     if (!record) throw new NotFoundException(`Immobilisation ${id} introuvable`);
+
+    // IDOR — MANAGER ne voit que les immobilisations des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: record.vehicleId, currentManagerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw new ForbiddenException('Accès refusé — cette immobilisation est hors de votre périmètre');
+      }
+    }
     return record;
   }
 

@@ -1,7 +1,7 @@
 import {
-  BadRequestException, Injectable, Logger, NotFoundException,
+  BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
-import { VehicleAvailabilityEventType, User } from '@prisma/client';
+import { VehicleAvailabilityEventType, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditActions } from '../../common/constants/audit-actions';
@@ -27,7 +27,7 @@ export class AvailabilityService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: AvailabilityFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: AvailabilityFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
@@ -35,6 +35,11 @@ export class AvailabilityService {
     if (filters.type) where.type = filters.type;
     if (filters.active === 'true') where.resolvedAt = null;
     if (filters.active === 'false') where.resolvedAt = { not: null };
+
+    // IDOR — MANAGER ne voit que les événements des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.vehicleAvailabilityEvent.findMany({
@@ -47,12 +52,13 @@ export class AvailabilityService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const event = await this.prisma.vehicleAvailabilityEvent.findFirst({
       where: { id },
       include: EVENT_INCLUDE,
     });
     if (!event) throw new NotFoundException(`Événement disponibilité ${id} introuvable`);
+    await this.assertManagerVehicleScope(event.vehicleId, requestingUser);
     return event;
   }
 
@@ -60,12 +66,25 @@ export class AvailabilityService {
    * Récupère l'événement actif (non résolu) pour un véhicule.
    * Utilisé pour vérifier l'état courant du véhicule.
    */
-  async findActiveForVehicle(vehicleId: string) {
+  async findActiveForVehicle(vehicleId: string, requestingUser?: User) {
+    await this.assertManagerVehicleScope(vehicleId, requestingUser);
     return this.prisma.vehicleAvailabilityEvent.findFirst({
       where: { vehicleId, resolvedAt: null },
       include: EVENT_INCLUDE,
       orderBy: { startDate: 'desc' },
     });
+  }
+
+  /** IDOR — MANAGER ne voit que les événements des véhicules de son périmètre */
+  private async assertManagerVehicleScope(vehicleId: string, requestingUser?: User) {
+    if (requestingUser?.role !== UserRole.MANAGER) return;
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, currentManagerId: requestingUser.id },
+      select: { id: true },
+    });
+    if (!vehicle) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
   }
 
   // ─── Création (D-15) ───────────────────────────────────────────────────────

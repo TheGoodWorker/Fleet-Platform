@@ -72,6 +72,12 @@ export class VehiclesService {
         throw new ForbiddenException('Accès refusé — ce véhicule ne vous est pas affecté');
       }
     }
+
+    // IDOR — MANAGER ne voit que les véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER &&
+        vehicle.currentManagerId !== requestingUser.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
     return vehicle;
   }
 
@@ -129,8 +135,9 @@ export class VehiclesService {
 
   // ─── Affectations chauffeur ────────────────────────────────────────────────
 
-  async getDriverAssignments(vehicleId: string, page = 1, limit = 20) {
-    await this.findById(vehicleId);
+  async getDriverAssignments(vehicleId: string, page = 1, limit = 20, requestingUser?: User) {
+    // Le scoping MANAGER/DRIVER est appliqué par findById
+    await this.findById(vehicleId, requestingUser);
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
       this.prisma.vehicleDriverAssignment.findMany({

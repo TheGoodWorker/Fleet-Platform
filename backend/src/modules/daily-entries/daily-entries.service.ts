@@ -40,17 +40,32 @@ export class DailyEntriesService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  /** IDOR — un chauffeur ne peut consulter que les données de ses propres contrats */
-  private async assertDriverOwnsContract(contractId: string, requestingUser?: User) {
-    if (requestingUser?.role !== UserRole.DRIVER) return;
-    const driver = await this.prisma.driver.findFirst({
-      where: { userId: requestingUser.id }, select: { id: true },
-    });
-    const contract = await this.prisma.contract.findFirst({
-      where: { id: contractId }, select: { driverId: true },
-    });
-    if (!driver || !contract || contract.driverId !== driver.id) {
-      throw new ForbiddenException('Accès refusé — ce contrat ne vous appartient pas');
+  /**
+   * IDOR — scoping par contrat :
+   * - DRIVER : uniquement ses propres contrats
+   * - MANAGER : uniquement les contrats de son périmètre
+   */
+  private async assertContractScope(contractId: string, requestingUser?: User) {
+    if (requestingUser?.role === UserRole.DRIVER) {
+      const driver = await this.prisma.driver.findFirst({
+        where: { userId: requestingUser.id }, select: { id: true },
+      });
+      const contract = await this.prisma.contract.findFirst({
+        where: { id: contractId }, select: { driverId: true },
+      });
+      if (!driver || !contract || contract.driverId !== driver.id) {
+        throw new ForbiddenException('Accès refusé — ce contrat ne vous appartient pas');
+      }
+      return;
+    }
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const contract = await this.prisma.contract.findFirst({
+        where: { id: contractId, managerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!contract) {
+        throw new ForbiddenException('Accès refusé — ce contrat est hors de votre périmètre');
+      }
     }
   }
 
@@ -61,7 +76,7 @@ export class DailyEntriesService {
     limit = 60,
     requestingUser?: User,
   ) {
-    await this.assertDriverOwnsContract(contractId, requestingUser);
+    await this.assertContractScope(contractId, requestingUser);
     const skip = (page - 1) * limit;
     const where: any = { contractId };
 
@@ -92,7 +107,7 @@ export class DailyEntriesService {
    * Résumé de progression — dashboard et app chauffeur
    */
   async getProgressSummary(contractId: string, requestingUser?: User) {
-    await this.assertDriverOwnsContract(contractId, requestingUser);
+    await this.assertContractScope(contractId, requestingUser);
     const contract = await this.prisma.contract.findFirst({
       where: { id: contractId },
       select: {
@@ -160,7 +175,8 @@ export class DailyEntriesService {
     };
   }
 
-  async getNextUnpaidEntry(contractId: string) {
+  async getNextUnpaidEntry(contractId: string, requestingUser?: User) {
+    await this.assertContractScope(contractId, requestingUser);
     return this.prisma.dailyEntry.findFirst({
       where: {
         contractId,

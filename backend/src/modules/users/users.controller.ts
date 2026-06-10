@@ -37,8 +37,8 @@ export class UsersController {
   @Get(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Détail utilisateur' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Post()

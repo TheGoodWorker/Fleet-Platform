@@ -1,9 +1,9 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
   IncidentStatus, IncidentSeverity, IncidentType, NotificationType,
-  NotificationPriority, User, VehicleStatus, VehicleAvailabilityEventType,
+  NotificationPriority, User, UserRole, VehicleStatus, VehicleAvailabilityEventType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -43,7 +43,7 @@ export class IncidentsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: IncidentFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: IncidentFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
@@ -51,6 +51,11 @@ export class IncidentsService {
     if (filters.type) where.type = filters.type;
     if (filters.status) where.status = filters.status;
     if (filters.severity) where.severity = filters.severity;
+
+    // IDOR — MANAGER ne voit que les incidents des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.incident.findMany({
@@ -63,12 +68,23 @@ export class IncidentsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const incident = await this.prisma.incident.findFirst({
       where: { id },
       include: INCIDENT_INCLUDE,
     });
     if (!incident) throw new NotFoundException(`Incident ${id} introuvable`);
+
+    // IDOR — MANAGER ne voit que les incidents des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: incident.vehicleId, currentManagerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw new ForbiddenException('Accès refusé — cet incident est hors de votre périmètre');
+      }
+    }
     return incident;
   }
 

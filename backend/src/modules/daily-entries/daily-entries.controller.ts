@@ -46,7 +46,7 @@ export class DailyEntriesController {
   @Roles(UserRole.MANAGER)
   @RequirePermission(Perm.RECORD_PAYMENT)
   @ApiOperation({ summary: 'Prochain jour non payé d\'un contrat' })
-  getNextUnpaid(@Param('contractId') contractId: string) {
-    return this.service.getNextUnpaidEntry(contractId);
+  getNextUnpaid(@Param('contractId') contractId: string, @CurrentUser() user: User) {
+    return this.service.getNextUnpaidEntry(contractId, user);
   }
 }

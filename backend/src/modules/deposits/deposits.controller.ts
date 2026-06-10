@@ -22,15 +22,15 @@ export class DepositsController {
   @Get('contract/:contractId')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Caution d\'un contrat' })
-  findByContract(@Param('contractId') contractId: string) {
-    return this.service.findByContract(contractId);
+  findByContract(@Param('contractId') contractId: string, @CurrentUser() user: User) {
+    return this.service.findByContract(contractId, user);
   }
 
   @Get(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Détail d\'une caution' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Post()

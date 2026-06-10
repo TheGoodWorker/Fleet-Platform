@@ -35,8 +35,8 @@ export class PaymentsController {
   @Get(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Détail d\'un paiement' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Post()

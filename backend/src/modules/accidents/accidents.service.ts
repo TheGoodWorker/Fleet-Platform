@@ -1,9 +1,9 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
   AccidentStep, AccidentCaseStatus, NotificationType, NotificationPriority,
-  User, ChargeResponsible, VehicleStatus, VehicleAvailabilityEventType,
+  User, UserRole, ChargeResponsible, VehicleStatus, VehicleAvailabilityEventType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -90,7 +90,7 @@ export class AccidentsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: AccidentFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: AccidentFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) {
@@ -98,6 +98,14 @@ export class AccidentsService {
     }
     if (filters.status) where.status = filters.status;
     if (filters.currentStep) where.currentStep = filters.currentStep;
+
+    // IDOR — MANAGER ne voit que les dossiers des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.incident = {
+        ...(where.incident ?? {}),
+        vehicle: { currentManagerId: requestingUser.id },
+      };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.accidentCase.findMany({
@@ -110,22 +118,38 @@ export class AccidentsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const accident = await this.prisma.accidentCase.findFirst({
       where: { id },
       include: ACCIDENT_INCLUDE,
     });
     if (!accident) throw new NotFoundException(`Dossier accident ${id} introuvable`);
+    await this.assertManagerVehicleScope(accident.incident?.vehicleId, requestingUser);
     return accident;
   }
 
-  async findByIncident(incidentId: string) {
+  async findByIncident(incidentId: string, requestingUser?: User) {
     const accident = await this.prisma.accidentCase.findFirst({
       where: { incidentId },
       include: ACCIDENT_INCLUDE,
     });
     if (!accident) throw new NotFoundException(`Pas de dossier accident pour l'incident ${incidentId}`);
+    await this.assertManagerVehicleScope(accident.incident?.vehicleId, requestingUser);
     return accident;
+  }
+
+  /** IDOR — MANAGER ne voit que les dossiers des véhicules de son périmètre */
+  private async assertManagerVehicleScope(vehicleId: string | undefined, requestingUser?: User) {
+    if (requestingUser?.role !== UserRole.MANAGER) return;
+    const vehicle = vehicleId
+      ? await this.prisma.vehicle.findFirst({
+          where: { id: vehicleId, currentManagerId: requestingUser.id },
+          select: { id: true },
+        })
+      : null;
+    if (!vehicle) {
+      throw new ForbiddenException('Accès refusé — ce dossier accident est hors de votre périmètre');
+    }
   }
 
   // ─── Création ──────────────────────────────────────────────────────────────

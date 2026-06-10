@@ -137,6 +137,10 @@ export class MediaService {
     return { url };
   }
 
+  // TODO(IDOR-scoping) : cette liste générique n'est PAS scopée pour MANAGER.
+  // MediaAsset est polymorphe (entityType/entityId en String, sans relation Prisma) —
+  // même limitation et mêmes options que DocumentsService.findAll.
+  // Les accès par id (findById, getSignedUrl) sont verrouillés.
   async findAll(filters: MediaFiltersDto, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const where: any = {};
@@ -233,12 +237,17 @@ export class MediaService {
     return mission;
   }
 
-  async findPhotoMissions(filters: PhotoMissionFiltersDto, page = 1, limit = 20) {
+  async findPhotoMissions(filters: PhotoMissionFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
     if (filters.driverId) where.driverId = filters.driverId;
     if (filters.status) where.status = filters.status;
+
+    // IDOR — MANAGER ne voit que les missions des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.photoMission.findMany({
@@ -251,12 +260,23 @@ export class MediaService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findPhotoMissionById(id: string) {
+  async findPhotoMissionById(id: string, requestingUser?: User) {
     const mission = await this.prisma.photoMission.findFirst({
       where: { id },
       include: { photos: { include: { mediaAsset: true } } },
     });
     if (!mission) throw new NotFoundException(`Mission photo ${id} introuvable`);
+
+    // IDOR — MANAGER ne voit que les missions des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: mission.vehicleId, currentManagerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw new ForbiddenException('Accès refusé — cette mission est hors de votre périmètre');
+      }
+    }
     return mission;
   }
 

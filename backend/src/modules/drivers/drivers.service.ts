@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ContractStatus, DriverStatus, FieldValidationStatus } from '@prisma/client';
+import { ContractStatus, DriverStatus, FieldValidationStatus, User, UserRole } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuditActions } from '../../common/constants/audit-actions';
 import { EntityTypes } from '../../common/constants/entity-types';
@@ -26,7 +26,17 @@ export class DriversService {
     private readonly audit: AuditService,
   ) {}
 
-  async findAll(filters: DriverFiltersDto, page = 1, limit = 20) {
+  /** Périmètre MANAGER (H-05 étendu) : chauffeurs liés à ses contrats OU affectés à ses véhicules */
+  private managerDriverScope(managerId: string) {
+    return {
+      OR: [
+        { contracts: { some: { managerId } } },
+        { currentVehicles: { some: { currentManagerId: managerId } } },
+      ],
+    };
+  }
+
+  async findAll(filters: DriverFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
 
@@ -41,6 +51,11 @@ export class DriversService {
       ];
     }
 
+    // IDOR — MANAGER ne voit que les chauffeurs de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.AND = [this.managerDriverScope(requestingUser.id)];
+    }
+
     const [data, total] = await Promise.all([
       this.prisma.driver.findMany({ where, skip, take: limit, include: DRIVER_INCLUDE, orderBy: { createdAt: 'desc' } }),
       this.prisma.driver.count({ where }),
@@ -48,9 +63,20 @@ export class DriversService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const driver = await this.prisma.driver.findFirst({ where: { id }, include: DRIVER_INCLUDE });
     if (!driver) throw new NotFoundException(`Chauffeur ${id} introuvable`);
+
+    // IDOR — MANAGER ne voit que les chauffeurs de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const inScope = await this.prisma.driver.findFirst({
+        where: { id, ...this.managerDriverScope(requestingUser.id) },
+        select: { id: true },
+      });
+      if (!inScope) {
+        throw new ForbiddenException('Accès refusé — ce chauffeur est hors de votre périmètre');
+      }
+    }
     return driver;
   }
 
@@ -261,8 +287,9 @@ export class DriversService {
 
   // ─── Historique des affectations véhicule d'un chauffeur ─────────────────
 
-  async getVehicleAssignments(driverId: string, page = 1, limit = 20) {
-    await this.findById(driverId);
+  async getVehicleAssignments(driverId: string, page = 1, limit = 20, requestingUser?: User) {
+    // Le scoping MANAGER est appliqué par findById
+    await this.findById(driverId, requestingUser);
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
       this.prisma.vehicleDriverAssignment.findMany({

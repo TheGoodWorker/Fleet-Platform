@@ -47,13 +47,18 @@ export class InspectionsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: InspectionFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: InspectionFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
     if (filters.contractId) where.contractId = filters.contractId;
     if (filters.type) where.type = filters.type;
     if (filters.status) where.status = filters.status;
+
+    // IDOR — MANAGER ne voit que les inspections des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.inspection.findMany({
@@ -73,7 +78,20 @@ export class InspectionsService {
     });
     if (!insp) throw new NotFoundException(`Inspection ${id} introuvable`);
     await this.assertDriverOwnsInspection(insp.driverId, requestingUser);
+    await this.assertManagerVehicleScope(insp.vehicleId, requestingUser);
     return insp;
+  }
+
+  /** IDOR — MANAGER ne voit que les inspections des véhicules de son périmètre */
+  private async assertManagerVehicleScope(vehicleId: string, requestingUser?: User) {
+    if (requestingUser?.role !== UserRole.MANAGER) return;
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, currentManagerId: requestingUser.id },
+      select: { id: true },
+    });
+    if (!vehicle) {
+      throw new ForbiddenException('Accès refusé — cette inspection est hors de votre périmètre');
+    }
   }
 
   /** IDOR — un chauffeur ne peut accéder qu'à ses propres inspections */
@@ -343,7 +361,7 @@ export class InspectionsService {
 
   // ─── Comparaison remise / retour ───────────────────────────────────────────
 
-  async generateComparison(returnInspectionId: string) {
+  async generateComparison(returnInspectionId: string, requestingUser?: User) {
     const returnInsp = await this.prisma.inspection.findFirst({
       where: { id: returnInspectionId },
       include: {
@@ -353,6 +371,7 @@ export class InspectionsService {
     });
 
     if (!returnInsp) throw new NotFoundException('Inspection introuvable');
+    await this.assertManagerVehicleScope(returnInsp.vehicleId, requestingUser);
     if (!returnInsp.linkedHandoverInspection) {
       throw new BadRequestException(
         'Cette inspection de retour n\'est pas liée à une inspection de remise',

@@ -1,5 +1,5 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
   RepossessionStatus, VehicleStatus, ContractStatus,
@@ -47,11 +47,16 @@ export class RepossessionsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: RepossessionFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: RepossessionFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
     if (filters.status) where.status = filters.status;
+
+    // IDOR — MANAGER ne voit que les dossiers des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.vehicleRepossession.findMany({
@@ -64,12 +69,23 @@ export class RepossessionsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const repossession = await this.prisma.vehicleRepossession.findFirst({
       where: { id },
       include: REPOSSESSION_INCLUDE,
     });
     if (!repossession) throw new NotFoundException(`Dossier reprise ${id} introuvable`);
+
+    // IDOR — MANAGER ne voit que les dossiers des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: repossession.vehicleId, currentManagerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw new ForbiddenException('Accès refusé — ce dossier reprise est hors de votre périmètre');
+      }
+    }
     return repossession;
   }
 

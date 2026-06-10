@@ -31,22 +31,23 @@ export class AccidentsController {
     @Query() filters: AccidentFiltersDto,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.findAll(filters, page, limit);
+    return this.service.findAll(filters, page, limit, user);
   }
 
   @Get('by-incident/:incidentId')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Trouver le dossier accident d\'un incident' })
-  findByIncident(@Param('incidentId') incidentId: string) {
-    return this.service.findByIncident(incidentId);
+  findByIncident(@Param('incidentId') incidentId: string, @CurrentUser() user: User) {
+    return this.service.findByIncident(incidentId, user);
   }
 
   @Get(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Détail d\'un dossier accident (historique étapes + dépenses)' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   // ─── Création ──────────────────────────────────────────────────────────────

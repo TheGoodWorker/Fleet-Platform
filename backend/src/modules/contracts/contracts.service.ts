@@ -65,6 +65,12 @@ export class ContractsService {
         throw new ForbiddenException('Accès refusé — ce contrat ne vous appartient pas');
       }
     }
+
+    // IDOR — MANAGER ne voit que les contrats de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER &&
+        contract.managerId !== requestingUser.id) {
+      throw new ForbiddenException('Accès refusé — ce contrat est hors de votre périmètre');
+    }
     return contract;
   }
 

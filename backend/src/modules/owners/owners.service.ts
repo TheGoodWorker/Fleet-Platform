@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { User, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOwnerDto, UpdateOwnerDto } from './dto/owner.dto';
 
@@ -12,11 +13,16 @@ const OWNER_INCLUDE = {
 export class OwnersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(page = 1, limit = 20, search?: string) {
+  async findAll(page = 1, limit = 20, search?: string, requestingUser?: User) {
     const skip = (page - 1) * limit;
-    const where = search
+    const where: any = search
       ? { OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { email: { contains: search, mode: 'insensitive' as const } }] }
       : {};
+
+    // IDOR — MANAGER ne voit que les propriétaires des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicles = { some: { currentManagerId: requestingUser.id } };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.owner.findMany({ where, skip, take: limit, include: OWNER_INCLUDE, orderBy: { createdAt: 'desc' } }),
@@ -25,9 +31,20 @@ export class OwnersService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const owner = await this.prisma.owner.findFirst({ where: { id }, include: OWNER_INCLUDE });
     if (!owner) throw new NotFoundException(`Propriétaire ${id} introuvable`);
+
+    // IDOR — MANAGER ne voit que les propriétaires des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const inScope = await this.prisma.owner.findFirst({
+        where: { id, vehicles: { some: { currentManagerId: requestingUser.id } } },
+        select: { id: true },
+      });
+      if (!inScope) {
+        throw new ForbiddenException('Accès refusé — ce propriétaire est hors de votre périmètre');
+      }
+    }
     return owner;
   }
 

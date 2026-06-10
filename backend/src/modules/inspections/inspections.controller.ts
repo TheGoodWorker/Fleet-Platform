@@ -31,8 +31,9 @@ export class InspectionsController {
     @Query() filters: InspectionFiltersDto,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.findAll(filters, page, limit);
+    return this.service.findAll(filters, page, limit, user);
   }
 
   @Get(':id')
@@ -45,8 +46,8 @@ export class InspectionsController {
   @Get(':id/comparison')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Comparaison remise → retour (fuel delta, mileage delta, items dégradés)' })
-  generateComparison(@Param('id') id: string) {
-    return this.service.generateComparison(id);
+  generateComparison(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.generateComparison(id, user);
   }
 
   // ─── Création ──────────────────────────────────────────────────────────────

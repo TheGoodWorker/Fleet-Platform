@@ -25,6 +25,12 @@ export class DocumentsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
+  // TODO(IDOR-scoping) : cette liste générique n'est PAS scopée pour MANAGER.
+  // Le modèle Document est polymorphe (entityType/entityId sans relation Prisma),
+  // un `where` simple ne peut pas joindre vers vehicle.currentManagerId.
+  // Les accès par id (findById) et par entité (findLatestForEntity) sont verrouillés.
+  // Options à trancher : exiger un filtre entityType+entityId pour MANAGER,
+  // ou ajouter des relations optionnelles (vehicleId/contractId/driverId) au modèle.
   async findAll(filters: DocumentFiltersDto, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const where: any = {};
@@ -76,47 +82,94 @@ export class DocumentsService {
   }
 
   /**
-   * IDOR — un chauffeur ne peut accéder qu'aux documents de :
-   * - son propre profil chauffeur
-   * - son véhicule courant
-   * - ses propres contrats
+   * IDOR — scoping par entité du document :
+   * - DRIVER : son profil chauffeur, son véhicule courant, ses propres contrats
+   * - MANAGER : entités de son périmètre (véhicules gérés, contrats gérés,
+   *   chauffeurs liés, propriétaires de ses véhicules)
    */
   private async assertDriverCanAccessEntity(
     entityType: DocumentEntityType,
     entityId: string,
     requestingUser?: User,
   ) {
-    if (requestingUser?.role !== UserRole.DRIVER) return;
+    if (requestingUser?.role === UserRole.DRIVER) {
+      const driver = await this.prisma.driver.findFirst({
+        where: { userId: requestingUser.id }, select: { id: true },
+      });
+      const denied = new ForbiddenException(
+        'Accès refusé — ce document ne vous concerne pas',
+      );
+      if (!driver) throw denied;
 
-    const driver = await this.prisma.driver.findFirst({
-      where: { userId: requestingUser.id }, select: { id: true },
-    });
-    const denied = new ForbiddenException(
-      'Accès refusé — ce document ne vous concerne pas',
-    );
-    if (!driver) throw denied;
+      switch (entityType) {
+        case DocumentEntityType.DRIVER:
+          if (entityId !== driver.id) throw denied;
+          return;
+        case DocumentEntityType.VEHICLE: {
+          const vehicle = await this.prisma.vehicle.findFirst({
+            where: { id: entityId }, select: { currentDriverId: true },
+          });
+          if (vehicle?.currentDriverId !== driver.id) throw denied;
+          return;
+        }
+        case DocumentEntityType.CONTRACT: {
+          const contract = await this.prisma.contract.findFirst({
+            where: { id: entityId }, select: { driverId: true },
+          });
+          if (contract?.driverId !== driver.id) throw denied;
+          return;
+        }
+        default:
+          // OWNER et autres types : jamais accessibles à un chauffeur
+          throw denied;
+      }
+    }
 
-    switch (entityType) {
-      case DocumentEntityType.DRIVER:
-        if (entityId !== driver.id) throw denied;
-        return;
-      case DocumentEntityType.VEHICLE: {
-        const vehicle = await this.prisma.vehicle.findFirst({
-          where: { id: entityId }, select: { currentDriverId: true },
-        });
-        if (vehicle?.currentDriverId !== driver.id) throw denied;
-        return;
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const managerId = requestingUser.id;
+      const denied = new ForbiddenException(
+        'Accès refusé — ce document est hors de votre périmètre',
+      );
+      switch (entityType) {
+        case DocumentEntityType.VEHICLE: {
+          const v = await this.prisma.vehicle.findFirst({
+            where: { id: entityId, currentManagerId: managerId }, select: { id: true },
+          });
+          if (!v) throw denied;
+          return;
+        }
+        case DocumentEntityType.CONTRACT: {
+          const c = await this.prisma.contract.findFirst({
+            where: { id: entityId, managerId }, select: { id: true },
+          });
+          if (!c) throw denied;
+          return;
+        }
+        case DocumentEntityType.DRIVER: {
+          const d = await this.prisma.driver.findFirst({
+            where: {
+              id: entityId,
+              OR: [
+                { contracts: { some: { managerId } } },
+                { currentVehicles: { some: { currentManagerId: managerId } } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (!d) throw denied;
+          return;
+        }
+        case DocumentEntityType.OWNER: {
+          const o = await this.prisma.owner.findFirst({
+            where: { id: entityId, vehicles: { some: { currentManagerId: managerId } } },
+            select: { id: true },
+          });
+          if (!o) throw denied;
+          return;
+        }
+        default:
+          throw denied;
       }
-      case DocumentEntityType.CONTRACT: {
-        const contract = await this.prisma.contract.findFirst({
-          where: { id: entityId }, select: { driverId: true },
-        });
-        if (contract?.driverId !== driver.id) throw denied;
-        return;
-      }
-      default:
-        // OWNER et autres types : jamais accessibles à un chauffeur
-        throw denied;
     }
   }
 

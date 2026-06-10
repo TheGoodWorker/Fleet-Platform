@@ -3,12 +3,13 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   DepositStatus, DepositTransactionType,
-  LedgerEntryType, LedgerDirection, User,
+  LedgerEntryType, LedgerDirection, User, UserRole,
 } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import {
@@ -48,7 +49,20 @@ export class DepositsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findByContract(contractId: string) {
+  /** IDOR — MANAGER ne voit que les cautions des contrats de son périmètre */
+  private async assertManagerContractScope(contractId: string, requestingUser?: User) {
+    if (requestingUser?.role !== UserRole.MANAGER) return;
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, managerId: requestingUser.id },
+      select: { id: true },
+    });
+    if (!contract) {
+      throw new ForbiddenException('Accès refusé — cette caution est hors de votre périmètre');
+    }
+  }
+
+  async findByContract(contractId: string, requestingUser?: User) {
+    await this.assertManagerContractScope(contractId, requestingUser);
     const deposit = await this.prisma.deposit.findFirst({
       where: { contractId },
       include: DEPOSIT_INCLUDE,
@@ -57,9 +71,10 @@ export class DepositsService {
     return deposit;
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const deposit = await this.prisma.deposit.findFirst({ where: { id }, include: DEPOSIT_INCLUDE });
     if (!deposit) throw new NotFoundException(`Caution ${id} introuvable`);
+    await this.assertManagerContractScope(deposit.contractId, requestingUser);
     return deposit;
   }
 

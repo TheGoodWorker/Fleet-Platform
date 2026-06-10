@@ -1,9 +1,9 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
   FuelLevel, FuelTransactionType, ChargeType, ChargeStatus, ChargeResponsible,
-  User,
+  User, UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -45,7 +45,7 @@ export class FuelService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: FuelFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: FuelFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
@@ -53,6 +53,11 @@ export class FuelService {
     if (filters.driverId) where.driverId = filters.driverId;
     if (filters.type) where.type = filters.type;
     if (filters.unvalidatedOnly === 'true') where.validatedAt = null;
+
+    // IDOR — MANAGER ne voit que les transactions des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.fuelTransaction.findMany({
@@ -65,13 +70,26 @@ export class FuelService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const tx = await this.prisma.fuelTransaction.findFirst({
       where: { id },
       include: FUEL_INCLUDE,
     });
     if (!tx) throw new NotFoundException(`Transaction carburant ${id} introuvable`);
+    await this.assertManagerVehicleScope(tx.vehicleId, requestingUser);
     return tx;
+  }
+
+  /** IDOR — MANAGER ne voit que les données carburant des véhicules de son périmètre */
+  private async assertManagerVehicleScope(vehicleId: string, requestingUser?: User) {
+    if (requestingUser?.role !== UserRole.MANAGER) return;
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, currentManagerId: requestingUser.id },
+      select: { id: true },
+    });
+    if (!vehicle) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
   }
 
   // ─── Enregistrement ────────────────────────────────────────────────────────
@@ -183,7 +201,8 @@ export class FuelService {
 
   // ─── Résumé carburant véhicule ─────────────────────────────────────────────
 
-  async getVehicleFuelHistory(vehicleId: string, limit = 10) {
+  async getVehicleFuelHistory(vehicleId: string, limit = 10, requestingUser?: User) {
+    await this.assertManagerVehicleScope(vehicleId, requestingUser);
     const transactions = await this.prisma.fuelTransaction.findMany({
       where: { vehicleId },
       include: FUEL_INCLUDE,

@@ -54,12 +54,27 @@ export class UsersService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const user = await this.prisma.user.findFirst({
       where: { id },
       select: USER_SELECT,
     });
     if (!user) throw new NotFoundException(`Utilisateur ${id} introuvable`);
+
+    // H-05 / IDOR — MANAGER : lui-même ou les chauffeurs liés à ses contrats
+    if (requestingUser?.role === UserRole.MANAGER && id !== requestingUser.id) {
+      const inScope = await this.prisma.user.findFirst({
+        where: {
+          id,
+          role: UserRole.DRIVER,
+          driver: { contracts: { some: { managerId: requestingUser.id } } },
+        },
+        select: { id: true },
+      });
+      if (!inScope) {
+        throw new ForbiddenException('Accès refusé — cet utilisateur est hors de votre périmètre');
+      }
+    }
     return user;
   }
 

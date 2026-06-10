@@ -1,8 +1,8 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
-  ContraventionSource, ChargeType, ChargeStatus, ChargeResponsible, User,
+  ContraventionSource, ChargeType, ChargeStatus, ChargeResponsible, User, UserRole,
 } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -32,13 +32,18 @@ export class ContraventionsService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async findAll(filters: ContraventionFiltersDto, page = 1, limit = 20) {
+  async findAll(filters: ContraventionFiltersDto, page = 1, limit = 20, requestingUser?: User) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
     if (filters.driverId) where.driverId = filters.driverId;
     if (filters.source) where.source = filters.source;
     if (filters.isPaid !== undefined) where.isPaid = filters.isPaid;
+
+    // IDOR — MANAGER ne voit que les contraventions des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.vehicle = { currentManagerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.contravention.findMany({
@@ -54,7 +59,7 @@ export class ContraventionsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const contravention = await this.prisma.contravention.findFirst({
       where: { id },
       include: {
@@ -63,6 +68,17 @@ export class ContraventionsService {
       },
     });
     if (!contravention) throw new NotFoundException(`Contravention ${id} introuvable`);
+
+    // IDOR — MANAGER ne voit que les contraventions des véhicules de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: contravention.vehicleId, currentManagerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw new ForbiddenException('Accès refusé — cette contravention est hors de votre périmètre');
+      }
+    }
     return contravention;
   }
 

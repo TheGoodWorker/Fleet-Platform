@@ -31,15 +31,16 @@ export class MaintenanceController {
     @Query() filters: MaintenanceFiltersDto,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.findAll(filters, page, limit);
+    return this.service.findAll(filters, page, limit, user);
   }
 
   @Get(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Détail d\'une maintenance' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   // ─── Maintenance — Création & cycle de vie ─────────────────────────────────

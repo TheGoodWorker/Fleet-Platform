@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -73,12 +74,23 @@ export class PaymentsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const payment = await this.prisma.payment.findFirst({
       where: { id },
       include: PAYMENT_INCLUDE,
     });
     if (!payment) throw new NotFoundException(`Paiement ${id} introuvable`);
+
+    // H-03 / IDOR — MANAGER ne voit que les paiements de ses contrats
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const contract = await this.prisma.contract.findFirst({
+        where: { id: payment.contractId, managerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!contract) {
+        throw new ForbiddenException('Accès refusé — ce paiement est hors de votre périmètre');
+      }
+    }
     return payment;
   }
 

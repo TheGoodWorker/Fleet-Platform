@@ -25,22 +25,23 @@ export class AvailabilityController {
     @Query() filters: AvailabilityFiltersDto,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.findAll(filters, page, limit);
+    return this.service.findAll(filters, page, limit, user);
   }
 
   @Get('vehicle/:vehicleId/active')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Récupérer l\'événement actif (non résolu) d\'un véhicule' })
-  findActiveForVehicle(@Param('vehicleId') vehicleId: string) {
-    return this.service.findActiveForVehicle(vehicleId);
+  findActiveForVehicle(@Param('vehicleId') vehicleId: string, @CurrentUser() user: User) {
+    return this.service.findActiveForVehicle(vehicleId, user);
   }
 
   @Get(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Détail d\'un événement de disponibilité' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Post(':id/resolve')

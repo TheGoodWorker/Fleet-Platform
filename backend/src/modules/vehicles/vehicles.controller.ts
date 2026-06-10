@@ -72,8 +72,9 @@ export class VehiclesController {
     @Param('id') id: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.getDriverAssignments(id, page, limit);
+    return this.service.getDriverAssignments(id, page, limit, user);
   }
 
   @Post(':id/assign-driver')

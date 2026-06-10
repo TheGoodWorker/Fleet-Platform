@@ -94,16 +94,17 @@ export class MediaController {
     @Query() filters: PhotoMissionFiltersDto,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.findPhotoMissions(filters, page, limit);
+    return this.service.findPhotoMissions(filters, page, limit, user);
   }
 
   /** GET /media/photo-missions/:id — doit être avant GET /:id */
   @Get('photo-missions/:id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Détail d\'une mission photo' })
-  findPhotoMissionById(@Param('id') id: string) {
-    return this.service.findPhotoMissionById(id);
+  findPhotoMissionById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findPhotoMissionById(id, user);
   }
 
   /** GET /media/:id/url — doit être avant GET /:id pour éviter collision */

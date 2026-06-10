@@ -27,8 +27,9 @@ export class FuelController {
     @Query() filters: FuelFiltersDto,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.findAll(filters, page, limit);
+    return this.service.findAll(filters, page, limit, user);
   }
 
   @Get('vehicle/:vehicleId/history')
@@ -37,15 +38,16 @@ export class FuelController {
   getVehicleFuelHistory(
     @Param('vehicleId') vehicleId: string,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.getVehicleFuelHistory(vehicleId, limit);
+    return this.service.getVehicleFuelHistory(vehicleId, limit, user);
   }
 
   @Get(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Détail d\'une transaction carburant' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Post()
