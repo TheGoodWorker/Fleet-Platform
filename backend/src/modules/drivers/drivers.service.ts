@@ -104,8 +104,9 @@ export class DriversService {
     });
   }
 
-  async update(id: string, dto: UpdateDriverDto) {
-    await this.findById(id);
+  async update(id: string, dto: UpdateDriverDto, requestingUser?: User) {
+    // Le scoping MANAGER est appliqué par findById
+    await this.findById(id, requestingUser);
     return this.prisma.driver.update({ where: { id }, data: dto, include: DRIVER_INCLUDE });
   }
 
@@ -216,12 +217,28 @@ export class DriversService {
    * @param actorId   ID du Manager qui effectue la validation
    * @param dto       Informations de visite terrain
    */
-  async validateField(driverId: string, actorId: string, dto: ValidateFieldDto): Promise<void> {
+  async validateField(
+    driverId: string,
+    actorId: string,
+    dto: ValidateFieldDto,
+    requestingUser?: User,
+  ): Promise<void> {
     const driver = await this.prisma.driver.findFirst({
       where: { id: driverId },
       include: { fieldValidation: true },
     });
     if (!driver) throw new NotFoundException(`Chauffeur ${driverId} introuvable`);
+
+    // IDOR — MANAGER ne valide que les chauffeurs de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const inScope = await this.prisma.driver.findFirst({
+        where: { id: driverId, ...this.managerDriverScope(requestingUser.id) },
+        select: { id: true },
+      });
+      if (!inScope) {
+        throw new ForbiddenException('Accès refusé — ce chauffeur est hors de votre périmètre');
+      }
+    }
 
     if (driver.status !== DriverStatus.PENDING_FIELD_VALIDATION) {
       throw new BadRequestException(

@@ -160,6 +160,8 @@ export class AccidentsService {
       where: { id: dto.incidentId },
     });
     if (!incident) throw new NotFoundException('Incident introuvable');
+    // IDOR — MANAGER ne peut ouvrir un dossier que sur les véhicules de son périmètre
+    await this.assertManagerVehicleScope(incident.vehicleId, actor);
     if (incident.type !== 'ACCIDENT') {
       throw new BadRequestException(
         `Seul un incident de type ACCIDENT peut générer un dossier accident — type actuel: ${incident.type}`,
@@ -263,8 +265,12 @@ export class AccidentsService {
   // ─── Avancement d'étape ────────────────────────────────────────────────────
 
   async advanceStep(id: string, dto: AdvanceStepDto, actor: User) {
-    const accidentCase = await this.prisma.accidentCase.findFirst({ where: { id } });
+    const accidentCase = await this.prisma.accidentCase.findFirst({
+      where: { id },
+      include: { incident: { select: { vehicleId: true } } },
+    });
     if (!accidentCase) throw new NotFoundException('Dossier accident introuvable');
+    await this.assertManagerVehicleScope(accidentCase.incident?.vehicleId, actor);
     if (accidentCase.status !== AccidentCaseStatus.OPEN) {
       throw new BadRequestException(
         `Dossier accident ${accidentCase.status} — avancement d'étape impossible`,
@@ -363,8 +369,12 @@ export class AccidentsService {
   // ─── Dépenses ──────────────────────────────────────────────────────────────
 
   async addExpense(id: string, dto: AddExpenseDto, actor: User) {
-    const accidentCase = await this.prisma.accidentCase.findFirst({ where: { id } });
+    const accidentCase = await this.prisma.accidentCase.findFirst({
+      where: { id },
+      include: { incident: { select: { vehicleId: true } } },
+    });
     if (!accidentCase) throw new NotFoundException('Dossier accident introuvable');
+    await this.assertManagerVehicleScope(accidentCase.incident?.vehicleId, actor);
     if (accidentCase.status !== AccidentCaseStatus.OPEN) {
       throw new BadRequestException('Impossible d\'ajouter une dépense sur un dossier clôturé');
     }

@@ -84,6 +84,10 @@ describe('AccidentsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Scoping IDOR — l'acteur MANAGER des tests gère le véhicule des fixtures
+    mockPrisma.vehicle.findFirst.mockResolvedValue({
+      id: 'vehicle-id', currentManagerId: 'manager-id',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

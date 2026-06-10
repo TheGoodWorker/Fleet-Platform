@@ -116,9 +116,15 @@ export class PaymentsService {
       select: {
         id: true, type: true, status: true, dailyAmount: true,
         validatedDays: true, targetDays: true, driverId: true, vehicleId: true,
+        managerId: true,
       },
     });
     if (!contract) throw new NotFoundException(`Contrat ${dto.contractId} introuvable`);
+
+    // IDOR — MANAGER ne peut enregistrer un paiement que sur ses contrats
+    if (actor.role === UserRole.MANAGER && contract.managerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce contrat est hors de votre périmètre');
+    }
 
     if (contract.status !== ContractStatus.ACTIVE) {
       throw new BadRequestException(

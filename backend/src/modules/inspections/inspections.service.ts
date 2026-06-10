@@ -114,6 +114,11 @@ export class InspectionsService {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
+    // IDOR — MANAGER ne peut créer une inspection que sur ses véhicules
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+
     const inspection = await this.prisma.inspection.create({
       data: {
         type: dto.type,
@@ -162,6 +167,7 @@ export class InspectionsService {
   async addItem(inspectionId: string, dto: AddInspectionItemDto, actor: User) {
     const insp = await this.prisma.inspection.findFirst({ where: { id: inspectionId } });
     if (!insp) throw new NotFoundException('Inspection introuvable');
+    await this.assertManagerVehicleScope(insp.vehicleId, actor);
     if (insp.status === InspectionStatus.COMPLETED) {
       throw new BadRequestException('Inspection terminée — impossible d\'ajouter des items');
     }
@@ -235,6 +241,7 @@ export class InspectionsService {
   async managerSign(id: string, dto: SignInspectionDto, actor: User) {
     const insp = await this.prisma.inspection.findFirst({ where: { id } });
     if (!insp) throw new NotFoundException('Inspection introuvable');
+    await this.assertManagerVehicleScope(insp.vehicleId, actor);
 
     const allowedStatuses = [InspectionStatus.DRIVER_SIGNED, InspectionStatus.PENDING_DRIVER];
     if (!allowedStatuses.includes(insp.status)) {
@@ -334,6 +341,7 @@ export class InspectionsService {
   async linkReturnToHandover(returnId: string, dto: LinkReturnInspectionDto, actor: User) {
     const returnInsp = await this.prisma.inspection.findFirst({ where: { id: returnId } });
     if (!returnInsp) throw new NotFoundException('Inspection de retour introuvable');
+    await this.assertManagerVehicleScope(returnInsp.vehicleId, actor);
 
     const handoverInsp = await this.prisma.inspection.findFirst({
       where: { id: dto.handoverInspectionId },

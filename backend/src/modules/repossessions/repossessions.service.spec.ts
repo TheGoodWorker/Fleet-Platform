@@ -96,6 +96,7 @@ describe('RepossessionsService', () => {
     beforeEach(() => {
       mockPrisma.vehicle.findFirst.mockResolvedValue({
         id: 'vehicle-id', status: VehicleStatus.ASSIGNED, plateNumber: 'ABC123',
+        currentManagerId: 'manager-id',
       });
       mockPrisma.vehicleRepossession.findFirst.mockResolvedValue(null); // pas de doublon actif
       mockPrisma.contract.findFirst.mockResolvedValue({ id: 'contract-id' });
@@ -126,6 +127,7 @@ describe('RepossessionsService', () => {
     it('rejette si le véhicule est déjà REPOSSESSED', async () => {
       mockPrisma.vehicle.findFirst.mockResolvedValue({
         id: 'vehicle-id', status: VehicleStatus.REPOSSESSED,
+        currentManagerId: 'manager-id',
       });
       await expect(service.propose(proposeDto as any, mockActor)).rejects.toThrow(BadRequestException);
     });

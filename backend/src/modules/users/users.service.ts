@@ -116,8 +116,9 @@ export class UsersService {
     });
   }
 
-  async update(id: string, dto: UpdateUserDto) {
-    await this.findById(id);
+  async update(id: string, dto: UpdateUserDto, requestingUser?: User) {
+    // Le scoping MANAGER (lui-même ou ses chauffeurs H-05) est appliqué par findById
+    await this.findById(id, requestingUser);
     return this.prisma.user.update({ where: { id }, data: dto, select: USER_SELECT });
   }
 

@@ -213,6 +213,9 @@ export class DepositsService {
   async recordPayment(id: string, dto: RecordDepositPaymentDto, actor: User) {
     const deposit = await this.findById(id);
 
+    // IDOR — MANAGER ne peut encaisser que les cautions de ses contrats
+    await this.assertManagerContractScope(deposit.contractId, actor);
+
     if (deposit.status === DepositStatus.PAID) {
       throw new BadRequestException('La caution est déjà intégralement payée');
     }

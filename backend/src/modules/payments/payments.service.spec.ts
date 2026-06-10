@@ -28,6 +28,8 @@ const activeContract = {
   targetDays: 365,
   driverId: 'driver-id',
   vehicleId: 'vehicle-id',
+  // L'acteur MANAGER des tests est le manager du contrat (scoping IDOR)
+  managerId: 'actor-id',
 };
 
 const mockPrisma = {

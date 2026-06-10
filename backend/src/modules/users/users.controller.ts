@@ -52,8 +52,8 @@ export class UsersController {
   @Patch(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Modifier un utilisateur' })
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.service.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() user: User) {
+    return this.service.update(id, dto, user);
   }
 
   @Patch(':id/password')

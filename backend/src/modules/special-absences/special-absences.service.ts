@@ -132,6 +132,11 @@ export class SpecialAbsencesService {
       include: ABSENCE_INCLUDE,
     });
     if (!absence) throw new NotFoundException('Absence spéciale introuvable');
+
+    // IDOR — MANAGER n'examine que les absences des contrats de son périmètre
+    if (actor.role === UserRole.MANAGER && absence.contract.managerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — cette absence est hors de votre périmètre');
+    }
     if (absence.status !== SpecialAbsenceStatus.PENDING) {
       throw new BadRequestException(
         `Absence ${absence.status} — examen manager impossible`,
@@ -292,8 +297,16 @@ export class SpecialAbsencesService {
   // ─── Clôture (fin effective) ───────────────────────────────────────────────
 
   async close(id: string, dto: CloseAbsenceDto, actor: User) {
-    const absence = await this.prisma.specialAbsence.findFirst({ where: { id } });
+    const absence = await this.prisma.specialAbsence.findFirst({
+      where: { id },
+      include: { contract: { select: { managerId: true } } },
+    });
     if (!absence) throw new NotFoundException('Absence spéciale introuvable');
+
+    // IDOR — MANAGER ne clôture que les absences des contrats de son périmètre
+    if (actor.role === UserRole.MANAGER && absence.contract.managerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — cette absence est hors de votre périmètre');
+    }
     if (absence.status !== SpecialAbsenceStatus.APPROVED) {
       throw new BadRequestException('Seule une absence approuvée peut être clôturée');
     }

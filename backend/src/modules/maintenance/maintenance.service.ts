@@ -78,9 +78,26 @@ export class MaintenanceService {
 
   // ─── Maintenance — Création ────────────────────────────────────────────────
 
+  /** IDOR — MANAGER n'agit que sur les véhicules de son périmètre */
+  private async assertManagerVehicleScope(vehicleId: string, actor?: User) {
+    if (actor?.role !== UserRole.MANAGER) return;
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, currentManagerId: actor.id },
+      select: { id: true },
+    });
+    if (!vehicle) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+  }
+
   async create(dto: CreateMaintenanceDto, actor: User) {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+
+    // IDOR — MANAGER ne planifie que sur ses véhicules
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
 
     const record = await this.prisma.maintenanceRecord.create({
       data: {
@@ -152,6 +169,7 @@ export class MaintenanceService {
   async update(id: string, dto: UpdateMaintenanceDto, actor: User) {
     const record = await this.prisma.maintenanceRecord.findFirst({ where: { id } });
     if (!record) throw new NotFoundException('Maintenance introuvable');
+    await this.assertManagerVehicleScope(record.vehicleId, actor);
     if (record.status === MaintenanceStatus.COMPLETED || record.status === MaintenanceStatus.CANCELLED) {
       throw new BadRequestException(
         `Maintenance ${record.status} — modification impossible`,
@@ -178,6 +196,7 @@ export class MaintenanceService {
   async complete(id: string, dto: CompleteMaintenanceDto, actor: User) {
     const record = await this.prisma.maintenanceRecord.findFirst({ where: { id } });
     if (!record) throw new NotFoundException('Maintenance introuvable');
+    await this.assertManagerVehicleScope(record.vehicleId, actor);
     if (record.status === MaintenanceStatus.COMPLETED) {
       throw new BadRequestException('Maintenance déjà complétée');
     }
@@ -230,6 +249,7 @@ export class MaintenanceService {
   async cancel(id: string, actor: User) {
     const record = await this.prisma.maintenanceRecord.findFirst({ where: { id } });
     if (!record) throw new NotFoundException('Maintenance introuvable');
+    await this.assertManagerVehicleScope(record.vehicleId, actor);
     if (record.status === MaintenanceStatus.COMPLETED) {
       throw new BadRequestException('Impossible d\'annuler une maintenance déjà complétée');
     }
@@ -269,6 +289,19 @@ export class MaintenanceService {
   async createMileageRecord(dto: CreateMileageRecordDto, actor: User) {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+
+    // IDOR — DRIVER ne relève que sur son véhicule courant, MANAGER sur son périmètre
+    if (actor.role === UserRole.DRIVER) {
+      const driver = await this.prisma.driver.findFirst({
+        where: { userId: actor.id }, select: { id: true },
+      });
+      if (!driver || vehicle.currentDriverId !== driver.id) {
+        throw new ForbiddenException('Accès refusé — ce véhicule ne vous est pas affecté');
+      }
+    }
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
 
     // Vérifier cohérence kilométrique (ne pas régresser)
     if (vehicle.currentMileage && dto.mileage < vehicle.currentMileage) {
@@ -313,6 +346,7 @@ export class MaintenanceService {
   async validateMileageRecord(id: string, actor: User) {
     const record = await this.prisma.mileageRecord.findFirst({ where: { id } });
     if (!record) throw new NotFoundException('Relevé kilométrique introuvable');
+    await this.assertManagerVehicleScope(record.vehicleId, actor);
     if (record.isValidated) {
       throw new BadRequestException('Ce relevé a déjà été validé');
     }

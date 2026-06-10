@@ -95,6 +95,11 @@ export class RepossessionsService {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
+    // IDOR — MANAGER ne peut proposer une reprise que sur ses véhicules
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+
     if (vehicle.status === VehicleStatus.REPOSSESSED) {
       throw new BadRequestException('Ce véhicule est déjà REPOSSESSED');
     }

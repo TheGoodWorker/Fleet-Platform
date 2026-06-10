@@ -83,6 +83,10 @@ describe('MaintenanceService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Scoping IDOR — l'acteur MANAGER des tests gère le véhicule des fixtures
+    mockPrisma.vehicle.findFirst.mockResolvedValue({
+      id: 'vehicle-id', currentManagerId: 'manager-id',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -103,7 +107,8 @@ describe('MaintenanceService', () => {
     const vehicle = {
       id: 'vehicle-id',
       plateNumber: 'ABC123',
-      currentManagerId: 'mgr-id',
+      // Aligné sur l'id de l'acteur MANAGER des tests (scoping IDOR)
+      currentManagerId: 'manager-id',
       currentMileage: 100000,
     };
 
@@ -291,7 +296,10 @@ describe('MaintenanceService', () => {
 
   describe('createMileageRecord', () => {
     it('auto-valide les relevés de source MANAGER', async () => {
-      const vehicle = { id: 'vehicle-id', plateNumber: 'ABC123', currentMileage: 100000 };
+      const vehicle = {
+        id: 'vehicle-id', plateNumber: 'ABC123', currentMileage: 100000,
+        currentManagerId: 'manager-id',
+      };
       const record = buildMileageRecord({ source: MileageSource.MANAGER, mileage: 103000 });
 
       mockPrisma.vehicle.findFirst.mockResolvedValue(vehicle);
@@ -317,7 +325,9 @@ describe('MaintenanceService', () => {
     });
 
     it('rejette si kilométrage inférieur au kilométrage actuel', async () => {
-      mockPrisma.vehicle.findFirst.mockResolvedValue({ id: 'vehicle-id', currentMileage: 105000 });
+      mockPrisma.vehicle.findFirst.mockResolvedValue({
+        id: 'vehicle-id', currentMileage: 105000, currentManagerId: 'manager-id',
+      });
 
       await expect(
         service.createMileageRecord(

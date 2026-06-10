@@ -85,6 +85,11 @@ export class ImmobilizationsService {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
+    // IDOR — MANAGER ne peut immobiliser que les véhicules de son périmètre
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+
     // Vérifier qu'il n'y a pas déjà une immobilisation active
     const activeImmob = await this.prisma.immobilization.findFirst({
       where: { vehicleId: dto.vehicleId, status: ImmobilizationStatus.ACTIVE },
@@ -211,6 +216,17 @@ export class ImmobilizationsService {
       include: IMMOB_INCLUDE,
     });
     if (!immob) throw new NotFoundException('Immobilisation introuvable');
+
+    // IDOR — MANAGER ne peut libérer que les véhicules de son périmètre
+    if (actor.role === UserRole.MANAGER) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: immob.vehicleId, currentManagerId: actor.id },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw new ForbiddenException('Accès refusé — cette immobilisation est hors de votre périmètre');
+      }
+    }
     if (immob.status !== ImmobilizationStatus.ACTIVE) {
       throw new BadRequestException('Immobilisation déjà terminée');
     }

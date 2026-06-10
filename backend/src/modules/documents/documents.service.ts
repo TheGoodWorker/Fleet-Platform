@@ -176,6 +176,9 @@ export class DocumentsService {
   // ─── Création avec versioning ──────────────────────────────────────────────
 
   async create(dto: CreateDocumentDto, actor: User) {
+    // IDOR — MANAGER ne crée des documents que sur les entités de son périmètre
+    await this.assertDriverCanAccessEntity(dto.entityType, dto.entityId, actor);
+
     // Vérification MediaAsset si fourni
     if (dto.mediaAssetId) {
       const asset = await this.prisma.mediaAsset.findFirst({ where: { id: dto.mediaAssetId } });
@@ -257,6 +260,9 @@ export class DocumentsService {
   async update(id: string, dto: UpdateDocumentDto, actor: User) {
     const doc = await this.prisma.document.findFirst({ where: { id } });
     if (!doc) throw new NotFoundException(`Document ${id} introuvable`);
+
+    // IDOR — MANAGER ne modifie que les documents des entités de son périmètre
+    await this.assertDriverCanAccessEntity(doc.entityType, doc.entityId, actor);
 
     const updatedStatus = this.computeStatus(
       dto.alwaysValid ?? doc.alwaysValid,

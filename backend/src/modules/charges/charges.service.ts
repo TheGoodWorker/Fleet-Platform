@@ -89,6 +89,11 @@ export class ChargesService {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
+    // IDOR — MANAGER ne peut créer une charge que sur les véhicules de son périmètre
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+
     const charge = await this.prisma.charge.create({
       data: {
         type: dto.type,

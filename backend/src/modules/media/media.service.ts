@@ -212,6 +212,11 @@ export class MediaService {
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
     if (!driver) throw new NotFoundException('Chauffeur introuvable');
 
+    // IDOR — MANAGER ne crée des missions que sur ses véhicules
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+
     const mission = await this.prisma.photoMission.create({
       data: {
         vehicleId: dto.vehicleId,
@@ -333,6 +338,17 @@ export class MediaService {
   async validatePhotoMission(id: string, actor: User) {
     const mission = await this.prisma.photoMission.findFirst({ where: { id } });
     if (!mission) throw new NotFoundException('Mission introuvable');
+
+    // IDOR — MANAGER ne valide que les missions des véhicules de son périmètre
+    if (actor.role === UserRole.MANAGER) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: mission.vehicleId, currentManagerId: actor.id },
+        select: { id: true },
+      });
+      if (!vehicle) {
+        throw new ForbiddenException('Accès refusé — cette mission est hors de votre périmètre');
+      }
+    }
     if (mission.status !== PhotoMissionStatus.SUBMITTED) {
       throw new BadRequestException('Mission non soumise — validation impossible');
     }

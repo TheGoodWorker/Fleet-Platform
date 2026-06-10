@@ -98,6 +98,11 @@ export class FuelService {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
+    // IDOR — MANAGER ne peut enregistrer que sur les véhicules de son périmètre
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+
     // R-08 : INITIAL_FULL_TANK doit avoir fuelLevel = FULL
     if (
       dto.type === FuelTransactionType.INITIAL_FULL_TANK &&
@@ -157,6 +162,7 @@ export class FuelService {
   async validate(id: string, dto: ValidateFuelTransactionDto, actor: User) {
     const tx = await this.prisma.fuelTransaction.findFirst({ where: { id } });
     if (!tx) throw new NotFoundException('Transaction carburant introuvable');
+    await this.assertManagerVehicleScope(tx.vehicleId, actor);
     if (tx.validatedAt) {
       throw new BadRequestException('Transaction carburant déjà validée');
     }

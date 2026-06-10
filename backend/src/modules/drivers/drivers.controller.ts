@@ -49,8 +49,8 @@ export class DriversController {
   @Patch(':id')
   @Roles(UserRole.MANAGER)
   @ApiOperation({ summary: 'Modifier les infos d\'un chauffeur' })
-  update(@Param('id') id: string, @Body() dto: UpdateDriverDto) {
-    return this.service.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateDriverDto, @CurrentUser() user: User) {
+    return this.service.update(id, dto, user);
   }
 
   /** G-02 : status migré de @Query vers @Body avec DTO validé */
@@ -109,7 +109,7 @@ export class DriversController {
     @Body() dto: ValidateFieldDto,
     @CurrentUser() actor: User,
   ): Promise<void> {
-    return this.service.validateField(id, actor.id, dto);
+    return this.service.validateField(id, actor.id, dto, actor);
   }
 
   @Get(':id/assignments')

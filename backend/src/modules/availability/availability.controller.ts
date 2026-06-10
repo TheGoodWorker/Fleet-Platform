@@ -48,11 +48,15 @@ export class AvailabilityController {
   @Roles(UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Résoudre manuellement un événement de disponibilité' })
-  resolveEvent(
+  async resolveEvent(
     @Param('id') id: string,
     @Body() dto: ResolveAvailabilityEventDto,
     @CurrentUser() actor: User,
   ) {
+    // IDOR — le scoping MANAGER est appliqué par findById.
+    // (resolveEvent est aussi appelé en interne par d'autres services :
+    // le check reste donc ici, côté route, pour ne pas casser ces flux.)
+    await this.service.findById(id, actor);
     return this.service.resolveEvent(id, dto, actor);
   }
 }

@@ -88,9 +88,26 @@ export class ContraventionsService {
    * D-12 : toute contravention est à la charge du DRIVER.
    * Cette règle est enforced ici — aucun DTO ne peut changer la responsabilité.
    */
+  /** IDOR — MANAGER n'agit que sur les véhicules de son périmètre */
+  private async assertManagerVehicleScope(vehicleId: string, actor?: User) {
+    if (actor?.role !== UserRole.MANAGER) return;
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, currentManagerId: actor.id },
+      select: { id: true },
+    });
+    if (!vehicle) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+  }
+
   async create(dto: CreateContraventionDto, actor: User) {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+
+    // IDOR — MANAGER ne peut déclarer que sur ses véhicules
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
 
     // Vérifier que le chauffeur existe si spécifié
     if (dto.driverId) {
@@ -140,6 +157,7 @@ export class ContraventionsService {
   async markPaid(id: string, dto: MarkPaidDto, actor: User) {
     const contravention = await this.prisma.contravention.findFirst({ where: { id } });
     if (!contravention) throw new NotFoundException('Contravention introuvable');
+    await this.assertManagerVehicleScope(contravention.vehicleId, actor);
     if (contravention.isPaid) {
       throw new BadRequestException('Contravention déjà marquée comme payée');
     }
@@ -177,6 +195,7 @@ export class ContraventionsService {
   async convertToCharge(id: string, dto: ConvertToChargeDto, actor: User) {
     const contravention = await this.prisma.contravention.findFirst({ where: { id } });
     if (!contravention) throw new NotFoundException('Contravention introuvable');
+    await this.assertManagerVehicleScope(contravention.vehicleId, actor);
     if (contravention.chargeId) {
       throw new BadRequestException('Cette contravention a déjà été convertie en charge');
     }

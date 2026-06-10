@@ -88,11 +88,28 @@ export class IncidentsService {
     return incident;
   }
 
+  /** IDOR — MANAGER n'agit que sur les incidents des véhicules de son périmètre */
+  private async assertManagerVehicleScope(vehicleId: string, actor?: User) {
+    if (actor?.role !== UserRole.MANAGER) return;
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, currentManagerId: actor.id },
+      select: { id: true },
+    });
+    if (!vehicle) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
+  }
+
   // ─── Création ──────────────────────────────────────────────────────────────
 
   async create(dto: CreateIncidentDto, actor: User) {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+
+    // IDOR — MANAGER ne peut déclarer que sur ses véhicules
+    if (actor.role === UserRole.MANAGER && vehicle.currentManagerId !== actor.id) {
+      throw new ForbiddenException('Accès refusé — ce véhicule est hors de votre périmètre');
+    }
 
     const incident = await this.prisma.incident.create({
       data: {
@@ -173,6 +190,7 @@ export class IncidentsService {
   async update(id: string, dto: UpdateIncidentDto, actor: User) {
     const incident = await this.prisma.incident.findFirst({ where: { id } });
     if (!incident) throw new NotFoundException('Incident introuvable');
+    await this.assertManagerVehicleScope(incident.vehicleId, actor);
     if (incident.status === IncidentStatus.CLOSED) {
       throw new BadRequestException('Impossible de modifier un incident clôturé');
     }
@@ -193,6 +211,7 @@ export class IncidentsService {
   async markInProgress(id: string, actor: User) {
     const incident = await this.prisma.incident.findFirst({ where: { id } });
     if (!incident) throw new NotFoundException('Incident introuvable');
+    await this.assertManagerVehicleScope(incident.vehicleId, actor);
     if (incident.status !== IncidentStatus.OPEN) {
       throw new BadRequestException(
         `Incident ${incident.status} — transition vers IN_PROGRESS impossible`,
@@ -209,6 +228,7 @@ export class IncidentsService {
   async resolve(id: string, dto: ResolveIncidentDto, actor: User) {
     const incident = await this.prisma.incident.findFirst({ where: { id } });
     if (!incident) throw new NotFoundException('Incident introuvable');
+    await this.assertManagerVehicleScope(incident.vehicleId, actor);
 
     const allowedStatuses: IncidentStatus[] = [IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS];
     if (!allowedStatuses.includes(incident.status)) {
