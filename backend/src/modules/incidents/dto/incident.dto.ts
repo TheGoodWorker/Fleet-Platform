@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsEnum, IsNumber, IsOptional, IsString, IsUUID, IsDateString,
+  IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, IsDateString, Max, Min,
 } from 'class-validator';
 import { IncidentType, IncidentStatus, IncidentSeverity } from '@prisma/client';
 
@@ -66,4 +66,10 @@ export class IncidentFiltersDto {
   @ApiPropertyOptional() @IsOptional() @IsEnum(IncidentType) type?: IncidentType;
   @ApiPropertyOptional() @IsOptional() @IsEnum(IncidentStatus) status?: IncidentStatus;
   @ApiPropertyOptional() @IsOptional() @IsEnum(IncidentSeverity) severity?: IncidentSeverity;
+
+  // Déclarés ici pour satisfaire forbidNonWhitelisted (le contrôleur
+  // les reçoit aussi via @Query() et ils ne doivent pas être rejetés).
+  // La pagination effective est gérée par les params @Query('page') et @Query('limit').
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) page?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(200) limit?: number;
 }
