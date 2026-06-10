@@ -110,16 +110,16 @@ export class MediaController {
   @Get(':id/url')
   @Roles(UserRole.DRIVER)
   @ApiOperation({ summary: 'Obtenir l\'URL (signée) d\'un MediaAsset' })
-  getSignedUrl(@Param('id') id: string) {
-    return this.service.getSignedUrl(id);
+  getSignedUrl(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.getSignedUrl(id, user);
   }
 
   /** GET /media/:id — route paramétrique générique (toujours après les routes statiques) */
   @Get(':id')
   @Roles(UserRole.DRIVER)
   @ApiOperation({ summary: 'Détail d\'un MediaAsset' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   /** GET /media — liste (après les routes paramétriques pour cohérence) */

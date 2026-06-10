@@ -38,8 +38,8 @@ export class InspectionsController {
   @Get(':id')
   @Roles(UserRole.DRIVER)
   @ApiOperation({ summary: 'Détail d\'une inspection avec items, photos, transactions carburant' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Get(':id/comparison')

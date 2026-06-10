@@ -1,9 +1,9 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
   InspectionStatus, InspectionType, FuelLevel, InspectionItemStatus,
-  NotificationType, NotificationPriority, User, ChargeType, ChargeStatus,
+  NotificationType, NotificationPriority, User, UserRole, ChargeType, ChargeStatus,
   ChargeResponsible,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -66,13 +66,28 @@ export class InspectionsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const insp = await this.prisma.inspection.findFirst({
       where: { id },
       include: INSPECTION_INCLUDE,
     });
     if (!insp) throw new NotFoundException(`Inspection ${id} introuvable`);
+    await this.assertDriverOwnsInspection(insp.driverId, requestingUser);
     return insp;
+  }
+
+  /** IDOR — un chauffeur ne peut accéder qu'à ses propres inspections */
+  private async assertDriverOwnsInspection(
+    inspectionDriverId: string | null,
+    requestingUser?: User,
+  ) {
+    if (requestingUser?.role !== UserRole.DRIVER) return;
+    const driver = await this.prisma.driver.findFirst({
+      where: { userId: requestingUser.id }, select: { id: true },
+    });
+    if (!driver || inspectionDriverId !== driver.id) {
+      throw new ForbiddenException('Accès refusé — cette inspection ne vous concerne pas');
+    }
   }
 
   // ─── Création ──────────────────────────────────────────────────────────────
@@ -150,6 +165,8 @@ export class InspectionsService {
   async driverSign(id: string, dto: SignInspectionDto, actor: User) {
     const insp = await this.prisma.inspection.findFirst({ where: { id } });
     if (!insp) throw new NotFoundException('Inspection introuvable');
+    // IDOR — un chauffeur ne peut signer que sa propre inspection
+    await this.assertDriverOwnsInspection(insp.driverId, actor);
     if (insp.status !== InspectionStatus.PENDING_DRIVER) {
       throw new BadRequestException(
         `Inspection ${insp.status} — la signature chauffeur n'est pas attendue`,

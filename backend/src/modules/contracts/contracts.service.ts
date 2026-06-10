@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContractStatus, ContractType, User, UserRole, VehicleStatus, AssignmentSource } from '@prisma/client';
 import { CreateContractDto, UpdateContractDto, ContractFiltersDto } from './dto/contract.dto';
@@ -52,9 +52,19 @@ export class ContractsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const contract = await this.prisma.contract.findFirst({ where: { id }, include: CONTRACT_INCLUDE });
     if (!contract) throw new NotFoundException(`Contrat ${id} introuvable`);
+
+    // IDOR — un chauffeur ne peut consulter que ses propres contrats
+    if (requestingUser?.role === UserRole.DRIVER) {
+      const driver = await this.prisma.driver.findFirst({
+        where: { userId: requestingUser.id }, select: { id: true },
+      });
+      if (!driver || contract.driverId !== driver.id) {
+        throw new ForbiddenException('Accès refusé — ce contrat ne vous appartient pas');
+      }
+    }
     return contract;
   }
 

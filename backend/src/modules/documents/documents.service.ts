@@ -1,7 +1,7 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
-import { DocumentStatus, DocumentType, DocumentEntityType, User } from '@prisma/client';
+import { DocumentStatus, DocumentType, DocumentEntityType, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditActions } from '../../common/constants/audit-actions';
@@ -46,12 +46,15 @@ export class DocumentsService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const doc = await this.prisma.document.findFirst({
       where: { id },
       include: { ...DOC_INCLUDE, parentDoc: true, childDocs: true },
     });
     if (!doc) throw new NotFoundException(`Document ${id} introuvable`);
+    await this.assertDriverCanAccessEntity(
+      doc.entityType, doc.entityId, requestingUser,
+    );
     return doc;
   }
 
@@ -59,7 +62,9 @@ export class DocumentsService {
     entityType: DocumentEntityType,
     entityId: string,
     type?: DocumentType,
+    requestingUser?: User,
   ) {
+    await this.assertDriverCanAccessEntity(entityType, entityId, requestingUser);
     const where: any = { entityType, entityId, isLatest: true };
     if (type) where.type = type;
 
@@ -68,6 +73,51 @@ export class DocumentsService {
       include: DOC_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * IDOR — un chauffeur ne peut accéder qu'aux documents de :
+   * - son propre profil chauffeur
+   * - son véhicule courant
+   * - ses propres contrats
+   */
+  private async assertDriverCanAccessEntity(
+    entityType: DocumentEntityType,
+    entityId: string,
+    requestingUser?: User,
+  ) {
+    if (requestingUser?.role !== UserRole.DRIVER) return;
+
+    const driver = await this.prisma.driver.findFirst({
+      where: { userId: requestingUser.id }, select: { id: true },
+    });
+    const denied = new ForbiddenException(
+      'Accès refusé — ce document ne vous concerne pas',
+    );
+    if (!driver) throw denied;
+
+    switch (entityType) {
+      case DocumentEntityType.DRIVER:
+        if (entityId !== driver.id) throw denied;
+        return;
+      case DocumentEntityType.VEHICLE: {
+        const vehicle = await this.prisma.vehicle.findFirst({
+          where: { id: entityId }, select: { currentDriverId: true },
+        });
+        if (vehicle?.currentDriverId !== driver.id) throw denied;
+        return;
+      }
+      case DocumentEntityType.CONTRACT: {
+        const contract = await this.prisma.contract.findFirst({
+          where: { id: entityId }, select: { driverId: true },
+        });
+        if (contract?.driverId !== driver.id) throw denied;
+        return;
+      }
+      default:
+        // OWNER et autres types : jamais accessibles à un chauffeur
+        throw denied;
+    }
   }
 
   // ─── Création avec versioning ──────────────────────────────────────────────

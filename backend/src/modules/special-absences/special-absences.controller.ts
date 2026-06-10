@@ -36,8 +36,8 @@ export class SpecialAbsencesController {
   @Get(':id')
   @Roles(UserRole.DRIVER)
   @ApiOperation({ summary: 'Détail d\'une absence spéciale' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Post()

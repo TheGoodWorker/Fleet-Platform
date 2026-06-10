@@ -52,6 +52,9 @@ const mockPrisma = {
     findFirst: jest.fn(),
     create: jest.fn(),
   },
+  driver: {
+    findFirst: jest.fn(),
+  },
 };
 
 const mockAudit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -70,6 +73,8 @@ describe('MediaService — submitPhotoMission() ownership (H-10)', () => {
     jest.resetAllMocks();
     mockAudit.log.mockResolvedValue(undefined);
     mockNotifications.send.mockResolvedValue(undefined);
+    // L'acteur DRIVER est propriétaire de la mission (driverId aligné sur la fixture)
+    mockPrisma.driver.findFirst.mockResolvedValue({ id: 'driver-id' });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

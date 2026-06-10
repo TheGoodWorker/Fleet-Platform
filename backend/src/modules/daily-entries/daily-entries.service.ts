@@ -2,11 +2,12 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
-import { DayStatus, ContractStatus, ContractType, VehicleStatus } from '@prisma/client';
+import { DayStatus, ContractStatus, ContractType, User, UserRole, VehicleStatus } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { DailyEntryFiltersDto } from './dto/daily-entry.dto';
 
@@ -39,12 +40,28 @@ export class DailyEntriesService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
+  /** IDOR — un chauffeur ne peut consulter que les données de ses propres contrats */
+  private async assertDriverOwnsContract(contractId: string, requestingUser?: User) {
+    if (requestingUser?.role !== UserRole.DRIVER) return;
+    const driver = await this.prisma.driver.findFirst({
+      where: { userId: requestingUser.id }, select: { id: true },
+    });
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId }, select: { driverId: true },
+    });
+    if (!driver || !contract || contract.driverId !== driver.id) {
+      throw new ForbiddenException('Accès refusé — ce contrat ne vous appartient pas');
+    }
+  }
+
   async findByContract(
     contractId: string,
     filters: DailyEntryFiltersDto,
     page = 1,
     limit = 60,
+    requestingUser?: User,
   ) {
+    await this.assertDriverOwnsContract(contractId, requestingUser);
     const skip = (page - 1) * limit;
     const where: any = { contractId };
 
@@ -74,7 +91,8 @@ export class DailyEntriesService {
   /**
    * Résumé de progression — dashboard et app chauffeur
    */
-  async getProgressSummary(contractId: string) {
+  async getProgressSummary(contractId: string, requestingUser?: User) {
+    await this.assertDriverOwnsContract(contractId, requestingUser);
     const contract = await this.prisma.contract.findFirst({
       where: { id: contractId },
       select: {

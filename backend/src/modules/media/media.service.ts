@@ -123,9 +123,10 @@ export class MediaService {
     return asset;
   }
 
-  async getSignedUrl(assetId: string): Promise<{ url: string }> {
+  async getSignedUrl(assetId: string, requestingUser?: User): Promise<{ url: string }> {
     const asset = await this.prisma.mediaAsset.findFirst({ where: { id: assetId } });
     if (!asset) throw new NotFoundException(`MediaAsset ${assetId} introuvable`);
+    this.assertDriverOwnsAsset(asset.uploadedById, requestingUser);
 
     // Extrait la clé depuis l'URL stockée en base
     const key = asset.fileUrl
@@ -153,10 +154,22 @@ export class MediaService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const asset = await this.prisma.mediaAsset.findFirst({ where: { id } });
     if (!asset) throw new NotFoundException(`MediaAsset ${id} introuvable`);
+    this.assertDriverOwnsAsset(asset.uploadedById, requestingUser);
     return asset;
+  }
+
+  /** IDOR — un chauffeur ne peut consulter que les médias qu'il a lui-même uploadés */
+  private assertDriverOwnsAsset(
+    uploadedById: string | null,
+    requestingUser?: User,
+  ): void {
+    if (requestingUser?.role !== UserRole.DRIVER) return;
+    if (uploadedById !== requestingUser.id) {
+      throw new ForbiddenException('Accès refusé — ce média ne vous appartient pas');
+    }
   }
 
   // ─── Photo wrapper ─────────────────────────────────────────────────────────
@@ -250,6 +263,17 @@ export class MediaService {
   async submitPhotoMission(id: string, dto: SubmitPhotoMissionDto, actor: User) {
     const mission = await this.prisma.photoMission.findFirst({ where: { id } });
     if (!mission) throw new NotFoundException('Mission introuvable');
+
+    // IDOR — un chauffeur ne peut soumettre que ses propres missions
+    if (actor.role === UserRole.DRIVER) {
+      const driver = await this.prisma.driver.findFirst({
+        where: { userId: actor.id }, select: { id: true },
+      });
+      if (!driver || mission.driverId !== driver.id) {
+        throw new ForbiddenException('Accès refusé — cette mission ne vous est pas assignée');
+      }
+    }
+
     if (
       mission.status !== PhotoMissionStatus.PENDING &&
       mission.status !== PhotoMissionStatus.OVERDUE

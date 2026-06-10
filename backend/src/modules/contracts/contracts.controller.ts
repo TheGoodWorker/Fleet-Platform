@@ -39,8 +39,8 @@ export class ContractsController {
   @Get(':id')
   @Roles(UserRole.DRIVER)
   @ApiOperation({ summary: 'Détail contrat' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Post()

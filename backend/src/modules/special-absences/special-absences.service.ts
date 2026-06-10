@@ -1,8 +1,8 @@
 import {
-  Injectable, Logger, NotFoundException, BadRequestException,
+  Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
-  SpecialAbsenceStatus, NotificationType, NotificationPriority, User,
+  SpecialAbsenceStatus, NotificationType, NotificationPriority, User, UserRole,
   VehicleAvailabilityEventType, DayStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -52,12 +52,18 @@ export class SpecialAbsencesService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const absence = await this.prisma.specialAbsence.findFirst({
       where: { id },
       include: ABSENCE_INCLUDE,
     });
     if (!absence) throw new NotFoundException(`Absence spéciale ${id} introuvable`);
+
+    // IDOR — un chauffeur ne peut consulter que ses propres absences
+    if (requestingUser?.role === UserRole.DRIVER &&
+        absence.driver.userId !== requestingUser.id) {
+      throw new ForbiddenException('Accès refusé — cette absence ne vous concerne pas');
+    }
     return absence;
   }
 
@@ -66,6 +72,13 @@ export class SpecialAbsencesService {
   async request(dto: RequestSpecialAbsenceDto, actor: User) {
     const driver = await this.prisma.driver.findFirst({ where: { id: dto.driverId } });
     if (!driver) throw new NotFoundException('Chauffeur introuvable');
+
+    // IDOR — un chauffeur ne peut demander une absence que pour lui-même
+    if (actor.role === UserRole.DRIVER && driver.userId !== actor.id) {
+      throw new ForbiddenException(
+        'Accès refusé — vous ne pouvez demander une absence que pour vous-même',
+      );
+    }
 
     const contract = await this.prisma.contract.findFirst({ where: { id: dto.contractId } });
     if (!contract) throw new NotFoundException('Contrat introuvable');

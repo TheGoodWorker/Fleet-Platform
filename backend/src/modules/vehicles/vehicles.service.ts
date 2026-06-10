@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { User, UserRole, VehicleStatus, AssignmentSource } from '@prisma/client';
 import { CreateVehicleDto, UpdateVehicleDto, AssignManagerDto, VehicleFiltersDto, AssignDriverDto } from './dto/vehicle.dto';
@@ -35,6 +35,15 @@ export class VehiclesService {
       if (owner) where.ownerId = owner.id;
     }
 
+    // Driver ne voit que son véhicule courant
+    if (requestingUser.role === UserRole.DRIVER) {
+      const driver = await this.prisma.driver.findFirst({
+        where: { userId: requestingUser.id }, select: { id: true },
+      });
+      // Aucun profil chauffeur → aucun véhicule visible
+      where.currentDriverId = driver?.id ?? '__none__';
+    }
+
     if (filters.search) {
       where.OR = [
         { plateNumber: { contains: filters.search, mode: 'insensitive' } },
@@ -50,9 +59,19 @@ export class VehiclesService {
     return { data, meta: { page, limit, total } };
   }
 
-  async findById(id: string) {
+  async findById(id: string, requestingUser?: User) {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id }, include: VEHICLE_INCLUDE });
     if (!vehicle) throw new NotFoundException(`Véhicule ${id} introuvable`);
+
+    // IDOR — un chauffeur ne peut consulter que son véhicule courant
+    if (requestingUser?.role === UserRole.DRIVER) {
+      const driver = await this.prisma.driver.findFirst({
+        where: { userId: requestingUser.id }, select: { id: true },
+      });
+      if (!driver || vehicle.currentDriverId !== driver.id) {
+        throw new ForbiddenException('Accès refusé — ce véhicule ne vous est pas affecté');
+      }
+    }
     return vehicle;
   }
 

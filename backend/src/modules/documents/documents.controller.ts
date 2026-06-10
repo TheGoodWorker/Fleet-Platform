@@ -36,16 +36,17 @@ export class DocumentsController {
   findLatestForEntity(
     @Param('entityType') entityType: DocumentEntityType,
     @Param('entityId') entityId: string,
+    @CurrentUser() user: User,
     @Query('type') type?: DocumentType,
   ) {
-    return this.service.findLatestForEntity(entityType, entityId, type);
+    return this.service.findLatestForEntity(entityType, entityId, type, user);
   }
 
   @Get(':id')
   @Roles(UserRole.DRIVER)
   @ApiOperation({ summary: 'Détail d\'un document (avec historique de versions)' })
-  findById(@Param('id') id: string) {
-    return this.service.findById(id);
+  findById(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.findById(id, user);
   }
 
   @Post()
