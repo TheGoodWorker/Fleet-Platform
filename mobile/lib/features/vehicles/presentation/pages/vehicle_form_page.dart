@@ -358,7 +358,7 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
 
                           // ── 6. Carburant ──────────────────────────────
                           DropdownButtonFormField<String>(
-                            key: ValueKey(_fuelType),
+                            key: ValueKey('fuel-${_fuelType ?? 'none'}'),
                             initialValue: _fuelType,
                             decoration: const InputDecoration(
                                 labelText: 'Carburant'),
@@ -386,7 +386,7 @@ class _VehicleFormPageState extends State<VehicleFormPage> {
 
                           // ── 7. Transmission ───────────────────────────
                           DropdownButtonFormField<String>(
-                            key: ValueKey(_transmission),
+                            key: ValueKey('transmission-${_transmission ?? 'none'}'),
                             initialValue: _transmission,
                             decoration: const InputDecoration(
                                 labelText: 'Transmission'),
