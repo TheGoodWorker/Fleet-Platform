@@ -73,16 +73,16 @@ export class UsersController {
   @Roles(UserRole.SUPER_MANAGER)
   @RequirePermission(Perm.MANAGE_USERS)
   @ApiOperation({ summary: 'Suspendre un utilisateur' })
-  suspend(@Param('id') id: string) {
-    return this.service.suspend(id);
+  suspend(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.suspend(id, user);
   }
 
   @Patch(':id/activate')
   @Roles(UserRole.SUPER_MANAGER)
   @RequirePermission(Perm.MANAGE_USERS)
   @ApiOperation({ summary: 'Réactiver un utilisateur' })
-  activate(@Param('id') id: string) {
-    return this.service.activate(id);
+  activate(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.activate(id, user);
   }
 
   @Delete(':id')

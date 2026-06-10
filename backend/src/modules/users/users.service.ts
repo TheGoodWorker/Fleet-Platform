@@ -14,6 +14,18 @@ const USER_SELECT = {
   owner: { select: { id: true, type: true } },
 };
 
+/**
+ * Hiérarchie locale pour les garde-fous d'escalade (alignée sur RolesGuard).
+ * Un non-ADMIN ne peut pas agir sur un compte de rang supérieur ou égal au sien.
+ */
+const ROLE_RANK: Record<UserRole, number> = {
+  ADMIN: 5,
+  SUPER_MANAGER: 4,
+  MANAGER: 3,
+  DRIVER: 2,
+  OWNER: 1,
+};
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -116,9 +128,31 @@ export class UsersService {
     });
   }
 
+  /**
+   * Garde-fou anti-escalade : un non-ADMIN ne peut pas agir sur un compte
+   * de rang supérieur ou égal au sien (ex. SM → ADMIN ou SM → autre SM).
+   * `allowSelf` autorise l'action sur son propre compte (modification de profil).
+   */
+  private assertRankAbove(
+    targetRole: UserRole,
+    targetId: string,
+    requestingUser?: User,
+    allowSelf = false,
+  ) {
+    if (!requestingUser || requestingUser.role === UserRole.ADMIN) return;
+    if (allowSelf && targetId === requestingUser.id) return;
+    if (ROLE_RANK[targetRole] >= ROLE_RANK[requestingUser.role]) {
+      throw new ForbiddenException(
+        'Accès refusé — vous ne pouvez pas agir sur un compte de rang supérieur ou égal au vôtre',
+      );
+    }
+  }
+
   async update(id: string, dto: UpdateUserDto, requestingUser?: User) {
     // Le scoping MANAGER (lui-même ou ses chauffeurs H-05) est appliqué par findById
-    await this.findById(id, requestingUser);
+    const target = await this.findById(id, requestingUser);
+    // Garde-fou : pas de modification d'un compte de rang ≥ (sauf soi-même)
+    this.assertRankAbove(target.role, id, requestingUser, true);
     return this.prisma.user.update({ where: { id }, data: dto, select: USER_SELECT });
   }
 
@@ -146,13 +180,17 @@ export class UsersService {
     });
   }
 
-  async suspend(id: string) {
-    await this.findById(id);
+  async suspend(id: string, requestingUser?: User) {
+    const target = await this.findById(id);
+    // Garde-fou : un SM ne peut pas suspendre un ADMIN ni un autre SM
+    this.assertRankAbove(target.role, id, requestingUser);
     return this.prisma.user.update({ where: { id }, data: { status: 'SUSPENDED' }, select: USER_SELECT });
   }
 
-  async activate(id: string) {
-    await this.findById(id);
+  async activate(id: string, requestingUser?: User) {
+    const target = await this.findById(id);
+    // Garde-fou : un SM ne peut pas réactiver un ADMIN ni un autre SM
+    this.assertRankAbove(target.role, id, requestingUser);
     return this.prisma.user.update({ where: { id }, data: { status: 'ACTIVE' }, select: USER_SELECT });
   }
 }

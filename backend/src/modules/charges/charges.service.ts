@@ -167,6 +167,14 @@ export class ChargesService {
   async validate(id: string, dto: ValidateChargeDto, actor: User) {
     const charge = await this.findById(id);
 
+    // Séparation des tâches (4-eyes) — pas d'auto-validation,
+    // quel que soit le rôle du validateur
+    if (charge.createdById === actor.id) {
+      throw new ForbiddenException(
+        'Séparation des tâches — vous ne pouvez pas valider une charge que vous avez créée',
+      );
+    }
+
     if (charge.status !== ChargeStatus.PENDING_VALIDATION) {
       throw new BadRequestException(
         `Seule une charge PENDING_VALIDATION peut être validée (statut actuel: ${charge.status})`,
