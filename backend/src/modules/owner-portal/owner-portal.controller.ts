@@ -25,8 +25,8 @@ export class OwnerPortalController {
   @Get('contracts/:contractId/visibility')
   @Roles(UserRole.MANAGER, UserRole.SUPER_MANAGER)
   @ApiOperation({ summary: 'Lire les paramètres de visibilité du portail propriétaire' })
-  getVisibilitySettings(@Param('contractId') contractId: string) {
-    return this.service.getVisibilitySettings(contractId);
+  getVisibilitySettings(@Param('contractId') contractId: string, @CurrentUser() user: User) {
+    return this.service.getVisibilitySettings(contractId, user);
   }
 
   @Patch('contracts/:contractId/visibility')
@@ -69,8 +69,9 @@ export class OwnerPortalController {
     @Param('contractId') contractId: string,
     @Query('year', ParseIntPipe) year: number,
     @Query('month', ParseIntPipe) month: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.getFinancialSummary(contractId, year, month);
+    return this.service.getFinancialSummary(contractId, year, month, user);
   }
 
   // ─── Versements SIMPLE_RENTAL ──────────────────────────────────────────────
@@ -84,8 +85,9 @@ export class OwnerPortalController {
     @Query() filters: RentalPaymentFiltersDto,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: User,
   ) {
-    return this.service.findRentalPayments(filters, page, limit);
+    return this.service.findRentalPayments(filters, page, limit, user);
   }
 
   @Post('rental-payments')

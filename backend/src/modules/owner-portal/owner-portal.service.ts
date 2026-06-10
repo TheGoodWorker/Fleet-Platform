@@ -2,7 +2,7 @@ import {
   Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import {
-  ContractType, RentalPaymentStatus, NotificationType, NotificationPriority, User,
+  ContractType, RentalPaymentStatus, NotificationType, NotificationPriority, User, UserRole,
 } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -28,7 +28,17 @@ export class OwnerPortalService {
 
   // ─── Paramètres de visibilité ──────────────────────────────────────────────
 
-  async getVisibilitySettings(contractId: string) {
+  async getVisibilitySettings(contractId: string, requestingUser?: User) {
+    // IDOR — MANAGER ne lit que les paramètres des contrats de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      const contract = await this.prisma.contract.findFirst({
+        where: { id: contractId, managerId: requestingUser.id },
+        select: { id: true },
+      });
+      if (!contract) {
+        throw new ForbiddenException('Accès refusé — ce contrat est hors de votre périmètre');
+      }
+    }
     const settings = await this.prisma.ownerPortalVisibilitySettings.findFirst({
       where: { contractId },
     });
@@ -244,11 +254,30 @@ export class OwnerPortalService {
     contractId: string,
     periodYear: number,
     periodMonth: number,
+    requestingUser?: User,
   ): Promise<OwnerFinancialSummaryDto> {
     const contract = await this.prisma.contract.findFirst({
       where: { id: contractId, type: ContractType.SIMPLE_RENTAL },
+      include: { owner: { select: { userId: true } } },
     });
     if (!contract) throw new NotFoundException('Contrat SIMPLE_RENTAL introuvable');
+
+    // IDOR — scoping par rôle :
+    // - OWNER : uniquement les contrats dont il est le propriétaire
+    // - MANAGER : uniquement les contrats de son périmètre
+    // - DRIVER : jamais (données financières propriétaire)
+    // - SUPER_MANAGER / ADMIN : accès global inchangé
+    if (requestingUser?.role === UserRole.OWNER &&
+        contract.owner?.userId !== requestingUser.id) {
+      throw new ForbiddenException('Accès au portail propriétaire refusé pour ce contrat');
+    }
+    if (requestingUser?.role === UserRole.MANAGER &&
+        contract.managerId !== requestingUser.id) {
+      throw new ForbiddenException('Accès refusé — ce contrat est hors de votre périmètre');
+    }
+    if (requestingUser?.role === UserRole.DRIVER) {
+      throw new ForbiddenException('Accès au portail propriétaire refusé');
+    }
 
     const payment = await this.prisma.ownerRentalPayment.findFirst({
       where: { contractId, periodYear, periodMonth },
@@ -294,13 +323,23 @@ export class OwnerPortalService {
 
   // ─── Versements SIMPLE_RENTAL ──────────────────────────────────────────────
 
-  async findRentalPayments(filters: RentalPaymentFiltersDto, page = 1, limit = 20) {
+  async findRentalPayments(
+    filters: RentalPaymentFiltersDto,
+    page = 1,
+    limit = 20,
+    requestingUser?: User,
+  ) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (filters.contractId) where.contractId = filters.contractId;
     if (filters.ownerId) where.ownerId = filters.ownerId;
     if (filters.status) where.status = filters.status;
     if (filters.periodYear) where.periodYear = filters.periodYear;
+
+    // IDOR — MANAGER ne voit que les versements des contrats de son périmètre
+    if (requestingUser?.role === UserRole.MANAGER) {
+      where.contract = { managerId: requestingUser.id };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.ownerRentalPayment.findMany({
