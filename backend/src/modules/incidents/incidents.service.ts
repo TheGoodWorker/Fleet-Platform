@@ -27,7 +27,7 @@ const INCIDENT_INCLUDE = {
     },
   },
   charges: { select: { id: true, type: true, amount: true, status: true } },
-  immobilizations: { select: { id: true, startDate: true, endDate: true, reason: true } },
+  immobilizations: { select: { id: true, startDate: true, actualEnd: true, reason: true } },
 };
 
 @Injectable()
